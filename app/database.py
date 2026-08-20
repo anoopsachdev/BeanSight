@@ -66,7 +66,6 @@ def _get_connect_args(url: str) -> dict:
         # Supabase PgBouncer pooler (port 6543) requires disabling statement caches
         return {
             "statement_cache_size": 0,
-            "prepared_statement_cache_size": 0,
         }
     return {}
 
