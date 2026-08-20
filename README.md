@@ -1,9 +1,3 @@
-<<<<<<< HEAD
-# ☕ BeanSight - Coffee Bean Analyzer
-=======
-<div align="center">
->>>>>>> 5ee5b22 (feat: complete BeanSight SaaS branding redesign and production-grade README revamp)
-
 # ☕ BeanSight
 ### **Production-Grade Computer Vision Pipeline for Specialty Coffee Defect Telemetry & Roast Grading**
 
