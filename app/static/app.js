@@ -185,7 +185,9 @@ function displayResults(result) {
 
   // Inference time
   const statTime = document.getElementById('stat-time');
-  statTime.textContent = `${result.inference_time_ms} ms`;
+  if (statTime) statTime.textContent = `${result.inference_time_ms} ms`;
+  const statTimePill = document.getElementById('stat-time-pill');
+  if (statTimePill) statTimePill.textContent = `${result.inference_time_ms} ms`;
 }
 
 function renderPrediction(type, prediction, confidence, probabilities) {
@@ -328,6 +330,7 @@ function renderHistory(predictions) {
 // ── Health Check ───────────────────────────────────────────────────────
 
 async function checkHealth() {
+  const statusText = document.getElementById('status-text');
   try {
     const response = await fetch('/health');
     if (!response.ok) throw new Error();
@@ -336,7 +339,7 @@ async function checkHealth() {
     const allLoaded = data.models?.roast && data.models?.defect;
     const someLoaded = data.models?.roast || data.models?.defect;
 
-    healthDot.className = 'health-dot ' + (
+    healthDot.className = 'status-indicator ' + (
       allLoaded ? 'healthy' : someLoaded ? 'degraded' : 'unhealthy'
     );
     healthDot.title = allLoaded
@@ -344,9 +347,16 @@ async function checkHealth() {
       : someLoaded
       ? 'Some models loaded'
       : 'No models loaded';
+
+    if (statusText) {
+      statusText.textContent = allLoaded ? 'Inference Engine Online' : someLoaded ? 'Partial Models Active' : 'Offline';
+    }
   } catch {
-    healthDot.className = 'health-dot unhealthy';
+    healthDot.className = 'status-indicator unhealthy';
     healthDot.title = 'API unreachable';
+    if (statusText) {
+      statusText.textContent = 'API Unreachable';
+    }
   }
 }
 
