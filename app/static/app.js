@@ -1,13 +1,5 @@
 /**
- * BeanSight — Industrial Quality-Control Telemetry Application
- * 
- * Handles:
- *  - Single & Batch inspection telemetry workflows
- *  - Quality Score (0-100) & SCAA Grade evaluation algorithms
- *  - Interactive sample loading & bounding box localization overlays
- *  - Collapsible 17-class defect & 4-roast spectrum distributions
- *  - Operational filter tabs (ALL / PASS / REVIEW / DEFECTS)
- *  - Live health check polling & Supabase telemetry syncing
+ * BeanSight — Artisanal Quality Assurance Studio
  */
 
 // ── State ──────────────────────────────────────────────────────────────
@@ -33,10 +25,8 @@ const statusText          = document.getElementById('status-text');
 const historyList         = document.getElementById('history-list');
 const spectrumToggleBtn   = document.getElementById('btn-spectrum-toggle');
 const spectrumCollapsible = document.getElementById('spectrum-collapsible');
-const tabSingle           = document.getElementById('tab-single');
-const tabBatch            = document.getElementById('tab-batch');
-const singleView          = document.getElementById('single-mode-view');
-const batchView           = document.getElementById('batch-mode-view');
+const tabGreen            = document.getElementById('tab-green');
+const tabRoasted          = document.getElementById('tab-roasted');
 const inspectedCounter    = document.getElementById('inspected-counter');
 
 // ── Toast Notifications ────────────────────────────────────────────────
@@ -60,22 +50,49 @@ function setLoading(isLoading) {
   if (analyzeBtn) analyzeBtn.disabled = isLoading;
 }
 
-// ── Mode Switcher (Single vs Batch) ────────────────────────────────────
+// ── Mode Switcher (Green vs Roasted Tabs) ──────────────────────────────
 
-if (tabSingle && tabBatch) {
-  tabSingle.addEventListener('click', () => {
-    tabSingle.classList.add('active');
-    tabBatch.classList.remove('active');
-    singleView.style.display = 'block';
-    batchView.style.display = 'none';
+function setUITab(mode) {
+  if (mode === 'green') {
+    tabGreen.classList.add('active');
+    tabRoasted.classList.remove('active');
+  } else {
+    tabRoasted.classList.add('active');
+    tabGreen.classList.remove('active');
+  }
+}
+
+if (tabGreen && tabRoasted) {
+  tabGreen.addEventListener('click', () => setUITab('green'));
+  tabRoasted.addEventListener('click', () => setUITab('roasted'));
+}
+
+// ── Analytics Dashboard Toggle ─────────────────────────────────────────
+
+const btnAnalyticsGreen = document.getElementById('btn-analytics-green');
+const btnAnalyticsRoasted = document.getElementById('btn-analytics-roasted');
+const analyticsGreenView = document.getElementById('analytics-green-view');
+const analyticsRoastedView = document.getElementById('analytics-roasted-view');
+const chartGreen = document.getElementById('analytics-chart-green');
+const chartRoasted = document.getElementById('analytics-chart-roasted');
+
+if (btnAnalyticsGreen && btnAnalyticsRoasted) {
+  btnAnalyticsGreen.addEventListener('click', () => {
+    btnAnalyticsGreen.classList.add('active');
+    btnAnalyticsRoasted.classList.remove('active');
+    analyticsGreenView.style.display = 'grid';
+    analyticsRoastedView.style.display = 'none';
+    chartGreen.style.display = 'block';
+    chartRoasted.style.display = 'none';
   });
 
-  tabBatch.addEventListener('click', () => {
-    tabBatch.classList.add('active');
-    tabSingle.classList.remove('active');
-    singleView.style.display = 'none';
-    batchView.style.display = 'block';
-    resultsSection.classList.remove('active');
+  btnAnalyticsRoasted.addEventListener('click', () => {
+    btnAnalyticsRoasted.classList.add('active');
+    btnAnalyticsGreen.classList.remove('active');
+    analyticsGreenView.style.display = 'none';
+    analyticsRoastedView.style.display = 'grid';
+    chartGreen.style.display = 'none';
+    chartRoasted.style.display = 'block';
   });
 }
 
@@ -85,8 +102,9 @@ if (spectrumToggleBtn && spectrumCollapsible) {
   spectrumToggleBtn.addEventListener('click', () => {
     const isHidden = spectrumCollapsible.style.display === 'none';
     spectrumCollapsible.style.display = isHidden ? 'block' : 'none';
-    const arrow = spectrumToggleBtn.querySelector('.toggle-arrow');
-    if (arrow) arrow.textContent = isHidden ? '▲' : '▼';
+    spectrumToggleBtn.textContent = isHidden 
+      ? 'Hide Detailed Spectrum ▲' 
+      : 'View 17-Class Spectrum & Probability Distribution ▼';
   });
 }
 
@@ -114,7 +132,6 @@ function handleFile(file) {
     uploadPreview.style.display = 'block';
     uploadPrompt.style.display = 'none';
     uploadActions.style.display = 'flex';
-    uploadZone.classList.add('has-image');
   };
   reader.readAsDataURL(file);
 }
@@ -126,7 +143,6 @@ function clearUpload() {
   uploadPreview.src = '';
   uploadPrompt.style.display = 'block';
   uploadActions.style.display = 'none';
-  uploadZone.classList.remove('has-image');
   resultsSection.classList.remove('active');
 }
 
@@ -134,23 +150,17 @@ function clearUpload() {
 if (uploadZone) {
   uploadZone.addEventListener('dragover', (e) => {
     e.preventDefault();
-    uploadZone.classList.add('drag-over');
-  });
-
-  uploadZone.addEventListener('dragleave', () => {
-    uploadZone.classList.remove('drag-over');
   });
 
   uploadZone.addEventListener('drop', (e) => {
     e.preventDefault();
-    uploadZone.classList.remove('drag-over');
     if (e.dataTransfer.files.length > 0) {
       handleFile(e.dataTransfer.files[0]);
     }
   });
 
   uploadZone.addEventListener('click', (e) => {
-    if (e.target.closest('#upload-actions')) return;
+    if (e.target.closest('#upload-actions') || e.target.closest('.quick-samples')) return;
     uploadInput.click();
   });
 }
@@ -168,46 +178,45 @@ if (clearBtn) clearBtn.addEventListener('click', clearUpload);
 // ── Quick Demo Sample Buttons ──────────────────────────────────────────
 
 document.querySelectorAll('.btn-sample').forEach(btn => {
-  btn.addEventListener('click', () => {
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
     const sampleType = btn.getAttribute('data-sample');
     loadDemoSample(sampleType);
   });
 });
 
 function loadDemoSample(type) {
-  // Create synthetic high-res test canvas sample
   const canvas = document.createElement('canvas');
   canvas.width = 224;
   canvas.height = 224;
   const ctx = canvas.getContext('2d');
 
-  // Draw background bean tone
   if (type === 'dark') {
-    ctx.fillStyle = '#2b1b14';
+    ctx.fillStyle = '#1A1614';
     ctx.fillRect(0, 0, 224, 224);
-    ctx.fillStyle = '#4a2f22';
+    ctx.fillStyle = '#2C2825';
     ctx.beginPath();
     ctx.ellipse(112, 112, 70, 95, Math.PI / 8, 0, 2 * Math.PI);
     ctx.fill();
-    ctx.strokeStyle = '#120a06';
+    ctx.strokeStyle = '#000000';
     ctx.lineWidth = 4;
     ctx.beginPath();
     ctx.moveTo(112, 35);
     ctx.bezierCurveTo(105, 112, 120, 112, 112, 190);
     ctx.stroke();
   } else if (type === 'defect') {
-    ctx.fillStyle = '#7a7052';
+    ctx.fillStyle = '#6a8f6d';
     ctx.fillRect(0, 0, 224, 224);
-    ctx.fillStyle = '#9e926e';
+    ctx.fillStyle = '#7a9f7d';
     ctx.beginPath();
     ctx.ellipse(112, 112, 75, 90, 0, 0, 2 * Math.PI);
     ctx.fill();
-    ctx.fillStyle = '#d4cbb0';
+    ctx.fillStyle = '#C28E46'; // Defect spot
     ctx.fillRect(80, 80, 64, 64);
   } else {
-    ctx.fillStyle = '#445b38';
+    ctx.fillStyle = '#8f9a88';
     ctx.fillRect(0, 0, 224, 224);
-    ctx.fillStyle = '#658354';
+    ctx.fillStyle = '#6a8f6d';
     ctx.beginPath();
     ctx.ellipse(112, 112, 72, 92, -Math.PI / 12, 0, 2 * Math.PI);
     ctx.fill();
@@ -220,7 +229,7 @@ function loadDemoSample(type) {
   }, 'image/jpeg');
 }
 
-// ── Quality Score Algorithm (SCAA Grade Standard) ──────────────────────
+// ── Quality Score Algorithm (Green Beans) ──────────────────────
 
 function calculateQualityScore(roastResult, defectResult) {
   let baseScore = 95;
@@ -228,7 +237,6 @@ function calculateQualityScore(roastResult, defectResult) {
   const defectName = defectResult?.prediction || '';
   const defectConf = defectResult?.confidence || 0;
 
-  // SCAA Defect Severity Categories
   const primarySevere = ['Full Black', 'Full Sour', 'Fungus Damage', 'Severe Insect Damage', 'Scorched', 'Burnt'];
   const secondaryModerate = ['Partial Black', 'Partial Sour', 'Broken', 'Cut', 'Shell', 'Floater', 'Quaker'];
   const millingProcessing = ['Husk', 'Parchment', 'Dry Cherry', 'Immature', 'Withered', 'Fade', 'Insect Damage'];
@@ -239,22 +247,19 @@ function calculateQualityScore(roastResult, defectResult) {
   let statusFlagText = '🟢 PASS — CLEAN BEAN';
 
   if (primarySevere.includes(defectName)) {
-    const penalty = 35 * defectConf;
-    baseScore -= penalty;
+    baseScore -= 35 * defectConf;
     severityText = 'Critical Risk (Primary Defect)';
     verdictText = 'Off-Grade / Reject: Severe defect detected';
     statusFlagClass = 'status-defect';
     statusFlagText = '🔴 REJECT — CRITICAL DEFECT';
   } else if (secondaryModerate.includes(defectName)) {
-    const penalty = 20 * defectConf;
-    baseScore -= penalty;
+    baseScore -= 20 * defectConf;
     severityText = 'Moderate Risk (Secondary Defect)';
     verdictText = 'Minor cup impact, secondary sort advised';
     statusFlagClass = 'status-review';
     statusFlagText = '🟡 REVIEW — SECONDARY DEFECT';
   } else if (millingProcessing.includes(defectName)) {
-    const penalty = 10 * defectConf;
-    baseScore -= penalty;
+    baseScore -= 10 * defectConf;
     severityText = 'Low Severity (Minor Defect)';
     verdictText = 'Tolerable processing artifact';
     statusFlagClass = 'status-pass';
@@ -272,12 +277,12 @@ function calculateQualityScore(roastResult, defectResult) {
   };
 }
 
-// ── Run AI Quality Diagnostic ──────────────────────────────────────────
+// ── Run AI Diagnostic ──────────────────────────────────────────
 
 if (analyzeBtn) {
   analyzeBtn.addEventListener('click', async () => {
     if (!selectedFile) {
-      showToast('Please select or drop an image first.', 'error');
+      showToast('Please load an image first.', 'error');
       return;
     }
 
@@ -299,7 +304,7 @@ if (analyzeBtn) {
 
       const result = await response.json();
       displayInspectionResults(result);
-      showToast('Inspection telemetry complete!', 'success');
+      showToast('Quality evaluation complete!', 'success');
       fetchHistory();
       incrementInspectionCounter();
     } catch (error) {
@@ -316,79 +321,98 @@ if (analyzeBtn) {
 function displayInspectionResults(result) {
   resultsSection.classList.add('active');
 
-  // Random inspection ID
   const randId = Math.floor(10000 + Math.random() * 90000);
   const inspIdEl = document.getElementById('inspection-id');
   if (inspIdEl) inspIdEl.textContent = `INSPECTION #BN-${randId}`;
 
-  // Left View Preview (Show annotated image with bounding boxes if roasted YOLO detections exist)
   const resultImg = document.getElementById('result-view-img');
-  const defectBox = document.getElementById('defect-box');
-  const boxLabel = document.getElementById('box-label');
+  const isGreen = result.roast?.prediction === 'Green';
 
-  if (result.roasted_defect?.annotated_image) {
-    if (resultImg) resultImg.src = result.roasted_defect.annotated_image;
-    if (defectBox) defectBox.classList.remove('active');
-  } else if (resultImg && uploadPreview.src) {
-    resultImg.src = uploadPreview.src;
+  // Toggle UI Layout based on Tier (Green vs Roasted)
+  setUITab(isGreen ? 'green' : 'roasted');
+  
+  const greenScoreCard = document.getElementById('green-score-card');
+  const roastedScoreCard = document.getElementById('roasted-score-card');
+  const spectrumContainer = document.getElementById('spectrum-container');
+  const defectLbl = document.getElementById('defect-lbl');
+  
+  if (isGreen) {
+    greenScoreCard.style.display = 'block';
+    roastedScoreCard.style.display = 'none';
+    spectrumContainer.style.display = 'block';
+    defectLbl.textContent = 'Physical Defect';
+    
+    if (resultImg && uploadPreview.src) resultImg.src = uploadPreview.src;
+    
+    const quality = calculateQualityScore(result.roast, result.defect);
+    const scoreEl = document.getElementById('quality-score');
+    if (scoreEl) animateCounter(scoreEl, 0, quality.score, 800, Math.round);
+    
+    const verdictEl = document.getElementById('score-verdict');
+    if (verdictEl) verdictEl.textContent = quality.verdict;
+    const flagEl = document.getElementById('status-flag');
+    if (flagEl) {
+      flagEl.className = `status-flag ${quality.flagClass}`;
+      flagEl.textContent = quality.flagText;
+    }
+    
+    const severityEl = document.getElementById('defect-severity');
+    if (severityEl) severityEl.textContent = quality.severity;
+    
+    if (result.roast?.probabilities) renderBars('roast-bars', result.roast.probabilities);
+    if (result.defect?.probabilities) renderBars('defect-bars', result.defect.probabilities);
+    
+  } else {
+    // Roasted Batch (YOLO output)
+    greenScoreCard.style.display = 'none';
+    roastedScoreCard.style.display = 'block';
+    spectrumContainer.style.display = 'none';
+    defectLbl.textContent = 'Batch Defects';
+    
+    if (result.roasted_defect?.annotated_image && resultImg) {
+      resultImg.src = result.roasted_defect.annotated_image;
+    } else if (resultImg && uploadPreview.src) {
+      resultImg.src = uploadPreview.src;
+    }
+
+    const defectCount = result.roasted_defect?.defect_count || 0;
+    const uniformity = Math.max(100 - (defectCount * 0.8), 70); // Simulated batch penalty
+    const uniEl = document.getElementById('batch-uniformity');
+    if (uniEl) animateCounter(uniEl, 0, uniformity, 800, (v) => v.toFixed(1));
+    
+    const flagEl = document.getElementById('batch-status-flag');
+    const verdictEl = document.getElementById('batch-verdict');
+    const severityEl = document.getElementById('defect-severity');
+    
+    if (defectCount > 5) {
+      flagEl.className = 'status-flag status-defect';
+      flagEl.textContent = '🔴 REJECT — UNEVEN ROAST';
+      verdictEl.textContent = 'High variance or scorching detected.';
+      severityEl.textContent = `High Risk (${defectCount} issues)`;
+    } else if (defectCount > 0) {
+      flagEl.className = 'status-flag status-review';
+      flagEl.textContent = '🟡 REVIEW — MINOR ISSUES';
+      verdictEl.textContent = 'Acceptable variance, monitor closely.';
+      severityEl.textContent = `Moderate Risk (${defectCount} issues)`;
+    } else {
+      flagEl.className = 'status-flag status-pass';
+      flagEl.textContent = '🟢 PRODUCTION READY';
+      verdictEl.textContent = 'Flawless, consistent roast profile.';
+      severityEl.textContent = 'Low Risk (Clean Batch)';
+    }
   }
 
-  // Calculate Quality Score
-  const quality = calculateQualityScore(result.roast, result.defect);
-
-  // Quality Score & Verdict
-  const scoreEl = document.getElementById('quality-score');
-  if (scoreEl) {
-    animateCounter(scoreEl, 0, quality.score, 800, (v) => Math.round(v));
-  }
-
-  const verdictEl = document.getElementById('score-verdict');
-  if (verdictEl) verdictEl.textContent = quality.verdict;
-
-  const flagEl = document.getElementById('status-flag');
-  if (flagEl) {
-    flagEl.className = `status-flag ${quality.flagClass}`;
-    flagEl.textContent = quality.flagText;
-  }
-
-  // Roast Attribute
+  // Common Attributes
   const roastBadge = document.getElementById('roast-badge');
   if (roastBadge && result.roast) {
     roastBadge.textContent = `${result.roast.prediction} Roast (${(result.roast.confidence * 100).toFixed(1)}%)`;
-    roastBadge.className = 'attr-val ' + getRoastBadgeClass(result.roast.prediction);
   }
 
-  // Defect Attribute
   const defectBadge = document.getElementById('defect-badge');
   if (defectBadge && result.defect) {
-    defectBadge.textContent = `${result.defect.prediction} (${(result.defect.confidence * 100).toFixed(1)}%)`;
-    defectBadge.className = 'attr-val ' + getDefectBadgeClass(result.defect.confidence);
+    defectBadge.textContent = `${result.defect.prediction}`;
   }
 
-  // Primary Confidence
-  const primaryConf = document.getElementById('primary-confidence');
-  if (primaryConf) {
-    const topConf = Math.max(result.roast?.confidence || 0, result.defect?.confidence || 0);
-    primaryConf.textContent = `${(topConf * 100).toFixed(1)}%`;
-  }
-
-  // Severity Index
-  const severityEl = document.getElementById('defect-severity');
-  if (severityEl) severityEl.textContent = quality.severity;
-
-  // Inference Latency
-  const statTime = document.getElementById('stat-time');
-  if (statTime) statTime.textContent = `${result.inference_time_ms} ms`;
-
-  // Render Detailed Bars in Collapsible
-  if (result.roast?.probabilities) {
-    renderBars('roast-bars', result.roast.probabilities);
-  }
-  if (result.defect?.probabilities) {
-    renderBars('defect-bars', result.defect.probabilities);
-  }
-
-  // Scroll to results
   resultsSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
@@ -409,13 +433,12 @@ function renderBars(containerId, probabilities) {
       <div class="prob-track">
         <div class="prob-fill ${isTop ? 'top-prediction' : ''}" style="width: 0%"></div>
       </div>
-      <div class="prob-value ${isTop ? 'highlight' : ''}">
+      <div class="prob-value">
         ${(prob * 100).toFixed(1)}%
       </div>
     `;
 
     container.appendChild(row);
-
     requestAnimationFrame(() => {
       setTimeout(() => {
         const fill = row.querySelector('.prob-fill');
@@ -423,22 +446,6 @@ function renderBars(containerId, probabilities) {
       }, index * 30);
     });
   });
-}
-
-function getRoastBadgeClass(prediction) {
-  const map = {
-    'Dark': 'badge-dark',
-    'Medium': 'badge-medium',
-    'Light': 'badge-light',
-    'Green': 'badge-green',
-  };
-  return map[prediction] || 'badge-medium';
-}
-
-function getDefectBadgeClass(confidence) {
-  if (confidence >= 0.7) return 'badge-defect-high';
-  if (confidence >= 0.4) return 'badge-defect-medium';
-  return 'badge-defect-low';
 }
 
 function animateCounter(element, from, to, duration, formatter) {
@@ -460,7 +467,7 @@ function incrementInspectionCounter() {
   inspectedCounter.textContent = (current + 1).toLocaleString();
 }
 
-// ── Operational History & Filter Tabs ──────────────────────────────────
+// ── Operational History ──────────────────────────────────
 
 async function fetchHistory() {
   try {
@@ -470,7 +477,7 @@ async function fetchHistory() {
     rawHistoryData = data.predictions || [];
     renderFilteredHistory();
   } catch {
-    // History sync is non-blocking
+    // Non-blocking
   }
 }
 
@@ -485,13 +492,11 @@ document.querySelectorAll('.filter-btn').forEach(btn => {
 
 function renderFilteredHistory() {
   if (!historyList) return;
-
   if (!rawHistoryData || rawHistoryData.length === 0) {
-    historyList.innerHTML = '<div class="history-empty">No inspections logged yet. Run a scan above to start audit log.</div>';
+    historyList.innerHTML = '<div class="history-empty">No inspections logged yet.</div>';
     return;
   }
 
-  // Filter logic
   let filtered = rawHistoryData;
   if (activeFilter === 'pass') {
     filtered = rawHistoryData.filter(p => p.confidence < 0.4 || p.predicted_class === 'Dark' || p.predicted_class === 'Medium' || p.predicted_class === 'Light');
@@ -502,11 +507,10 @@ function renderFilteredHistory() {
   }
 
   if (filtered.length === 0) {
-    historyList.innerHTML = `<div class="history-empty">No records matching filter "${activeFilter.toUpperCase()}".</div>`;
+    historyList.innerHTML = `<div class="history-empty">No records matching filter.</div>`;
     return;
   }
 
-  // Group predictions by filename
   const grouped = new Map();
   filtered.forEach(p => {
     const key = p.filename || p.id;
@@ -526,19 +530,24 @@ function renderFilteredHistory() {
 
     const isHighRisk = main.confidence >= 0.7 && main.analysis_type === 'defect';
     const isModerate = main.confidence >= 0.4 && main.confidence < 0.7;
+    const isGreen = main.predicted_class === 'Green' || main.analysis_type === 'defect' && main.predicted_class !== 'Dark' && main.predicted_class !== 'Medium' && main.predicted_class !== 'Light';
 
     const statusPillHtml = isHighRisk
-      ? `<span class="history-status-pill status-defect">🔴 DEFECT</span>`
+      ? `<span class="history-status-pill status-defect">DEFECT</span>`
       : isModerate
-      ? `<span class="history-status-pill status-review">🟡 REVIEW</span>`
-      : `<span class="history-status-pill status-pass">🟢 PASS</span>`;
+      ? `<span class="history-status-pill status-review">REVIEW</span>`
+      : `<span class="history-status-pill status-pass">PASS</span>`;
 
-    const details = `${main.analysis_type.toUpperCase()}: ${main.predicted_class}` +
-      (secondary ? ` · ${secondary.analysis_type.toUpperCase()}: ${secondary.predicted_class}` : '');
+    const tierBadgeHtml = isGreen 
+      ? `<span class="tag-tier tag-green">INBOUND - GREEN</span>`
+      : `<span class="tag-tier tag-roasted">PRODUCTION - ROASTED</span>`;
+
+    const details = `${main.analysis_type}: ${main.predicted_class}` +
+      (secondary ? ` · ${secondary.analysis_type}: ${secondary.predicted_class}` : '');
 
     const thumbHtml = main.image_url
-      ? `<img class="history-thumb" src="${main.image_url}" alt="Bean" loading="lazy" />`
-      : `<div class="history-thumb" style="background:var(--bg-elevated);display:flex;align-items:center;justify-content:center;font-size:16px;">☕</div>`;
+      ? `<img class="history-thumb" src="${main.image_url}" alt="Sample" loading="lazy" />`
+      : `<div class="history-thumb" style="background:var(--bg-surface);display:flex;align-items:center;justify-content:center;font-size:20px;">📷</div>`;
 
     return `
       <div class="history-item">
@@ -547,6 +556,7 @@ function renderFilteredHistory() {
           <div class="history-class">${main.predicted_class}</div>
           <div class="history-type">${details}</div>
         </div>
+        ${tierBadgeHtml}
         ${statusPillHtml}
         <div class="history-confidence">${(main.confidence * 100).toFixed(1)}%</div>
         <div class="history-time">${timeStr}</div>
@@ -555,7 +565,7 @@ function renderFilteredHistory() {
   }).join('');
 }
 
-// ── Health Check Polling ───────────────────────────────────────────────
+// ── Health Check ───────────────────────────────────────────────
 
 async function checkHealth() {
   try {
@@ -572,11 +582,10 @@ async function checkHealth() {
     healthDot.title = allLoaded ? 'All models loaded' : someLoaded ? 'Some models loaded' : 'No models loaded';
 
     if (statusText) {
-      statusText.textContent = allLoaded ? 'Inference Engine Online' : someLoaded ? 'Partial Telemetry Active' : 'Offline';
+      statusText.textContent = allLoaded ? 'System Online' : someLoaded ? 'Degraded' : 'Offline';
     }
   } catch {
     healthDot.className = 'status-indicator unhealthy';
-    healthDot.title = 'API unreachable';
     if (statusText) statusText.textContent = 'API Unreachable';
   }
 }
