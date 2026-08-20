@@ -43,7 +43,7 @@ DEFECT_CLASSES = [
     "Immature", "Parchment", "Partial Black", "Partial Sour",
     "Severe Insect Damage", "Shell", "Slight Insect Damage", "Withered",
 ]
-ROASTED_DEFECT_CLASSES = ["Quaker", "Scorched", "Burnt", "Broken", "Insect Damage"]
+ROASTED_DEFECT_CLASSES = ["Broken", "Quaker", "Normal", "Scorched"]
 
 # ── Global model references ────────────────────────────────────────────
 roast_predictor: Optional[ONNXPredictor] = None

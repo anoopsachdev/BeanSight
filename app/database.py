@@ -67,7 +67,6 @@ def _get_connect_args(url: str) -> dict:
         return {
             "statement_cache_size": 0,
             "prepared_statement_cache_size": 0,
-            "prepared_statement_name": lambda: "",
         }
     return {}
 
