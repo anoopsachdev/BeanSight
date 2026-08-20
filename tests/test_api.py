@@ -245,4 +245,4 @@ class TestFrontend:
     def test_serves_index_html(self, client):
         response = client.get("/")
         assert response.status_code == 200
-        assert "Coffee Bean Analyzer" in response.text
+        assert "BeanSight" in response.text
