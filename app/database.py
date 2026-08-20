@@ -77,7 +77,13 @@ async def init_db() -> None:
     settings = get_settings()
     url = settings.DATABASE_URL
 
-    is_postgres = "asyncpg" in url or "postgresql" in url
+    # Supabase gives standard postgresql:// urls, but SQLAlchemy async requires postgresql+asyncpg://
+    if url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql+asyncpg://", 1)
+    elif url.startswith("postgresql://") and not url.startswith("postgresql+asyncpg://"):
+        url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+
+    is_postgres = "asyncpg" in url
     engine_kwargs = {
         "echo": False,
         "connect_args": _get_connect_args(url),
