@@ -321,9 +321,15 @@ function displayInspectionResults(result) {
   const inspIdEl = document.getElementById('inspection-id');
   if (inspIdEl) inspIdEl.textContent = `INSPECTION #BN-${randId}`;
 
-  // Left View Preview
+  // Left View Preview (Show annotated image with bounding boxes if roasted YOLO detections exist)
   const resultImg = document.getElementById('result-view-img');
-  if (resultImg && uploadPreview.src) {
+  const defectBox = document.getElementById('defect-box');
+  const boxLabel = document.getElementById('box-label');
+
+  if (result.roasted_defect?.annotated_image) {
+    if (resultImg) resultImg.src = result.roasted_defect.annotated_image;
+    if (defectBox) defectBox.classList.remove('active');
+  } else if (resultImg && uploadPreview.src) {
     resultImg.src = uploadPreview.src;
   }
 

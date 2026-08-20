@@ -58,13 +58,16 @@ _engine = None
 _session_factory = None
 
 
+from sqlalchemy.pool import NullPool
+
 def _get_connect_args(url: str) -> dict:
     """Get driver-specific connection arguments."""
     if "asyncpg" in url:
-        # Supabase pooler doesn't support prepared statements
+        # Supabase PgBouncer pooler (port 6543) requires disabling statement caches
         return {
             "statement_cache_size": 0,
             "prepared_statement_cache_size": 0,
+            "prepared_statement_name": lambda: "",
         }
     return {}
 
@@ -76,12 +79,17 @@ async def init_db() -> None:
     settings = get_settings()
     url = settings.DATABASE_URL
 
-    _engine = create_async_engine(
-        url,
-        echo=False,
-        pool_pre_ping=True,
-        connect_args=_get_connect_args(url),
-    )
+    is_postgres = "asyncpg" in url or "postgresql" in url
+    engine_kwargs = {
+        "echo": False,
+        "connect_args": _get_connect_args(url),
+    }
+    if is_postgres:
+        engine_kwargs["poolclass"] = NullPool
+    else:
+        engine_kwargs["pool_pre_ping"] = True
+
+    _engine = create_async_engine(url, **engine_kwargs)
     _session_factory = async_sessionmaker(
         _engine,
         class_=AsyncSession,

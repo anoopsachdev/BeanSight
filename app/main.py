@@ -30,9 +30,10 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
 from app.config import get_settings
+from app.config import get_settings
 from app.database import close_db, get_history, get_stats, init_db, log_prediction
 from app.storage import init_storage, upload_image
-from model.predict import ONNXPredictor
+from model.predict import ONNXPredictor, YOLOv8ONNXPredictor
 
 # ── Class definitions (duplicated here to avoid importing torch) ────────
 ROAST_CLASSES = ["Dark", "Green", "Light", "Medium"]
@@ -42,10 +43,12 @@ DEFECT_CLASSES = [
     "Immature", "Parchment", "Partial Black", "Partial Sour",
     "Severe Insect Damage", "Shell", "Slight Insect Damage", "Withered",
 ]
+ROASTED_DEFECT_CLASSES = ["Quaker", "Scorched", "Burnt", "Broken", "Insect Damage"]
 
 # ── Global model references ────────────────────────────────────────────
 roast_predictor: Optional[ONNXPredictor] = None
 defect_predictor: Optional[ONNXPredictor] = None
+roasted_yolo_predictor: Optional[YOLOv8ONNXPredictor] = None
 
 # ── Rate limiter ────────────────────────────────────────────────────────
 settings = get_settings()
@@ -63,7 +66,7 @@ limiter = Limiter(key_func=get_real_ip, default_limits=[])
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup: load models + init DB. Shutdown: cleanup."""
-    global roast_predictor, defect_predictor
+    global roast_predictor, defect_predictor, roasted_yolo_predictor
 
     print("🚀 Starting Coffee Bean Analyzer...")
 
@@ -75,25 +78,37 @@ async def lifespan(app: FastAPI):
     print("  ☁️  Initializing storage...")
     await init_storage()
 
-    # Load ONNX models
+    # Load ONNX models if not already set (e.g. by mocks or tests)
     print("  🧠 Loading ONNX models...")
-    try:
-        roast_predictor = ONNXPredictor(
-            model_path=settings.ROAST_MODEL_PATH,
-            class_names=ROAST_CLASSES,
-        )
-        print(f"     ✅ Roast model loaded: {roast_predictor}")
-    except FileNotFoundError:
-        print(f"     ⚠️  Roast model not found at {settings.ROAST_MODEL_PATH}")
+    if roast_predictor is None:
+        try:
+            roast_predictor = ONNXPredictor(
+                model_path=settings.ROAST_MODEL_PATH,
+                class_names=ROAST_CLASSES,
+            )
+            print(f"     ✅ Roast model loaded: {roast_predictor}")
+        except FileNotFoundError:
+            print(f"     ⚠️  Roast model not found at {settings.ROAST_MODEL_PATH}")
 
-    try:
-        defect_predictor = ONNXPredictor(
-            model_path=settings.DEFECT_MODEL_PATH,
-            class_names=DEFECT_CLASSES,
-        )
-        print(f"     ✅ Defect model loaded: {defect_predictor}")
-    except FileNotFoundError:
-        print(f"     ⚠️  Defect model not found at {settings.DEFECT_MODEL_PATH}")
+    if defect_predictor is None:
+        try:
+            defect_predictor = ONNXPredictor(
+                model_path=settings.DEFECT_MODEL_PATH,
+                class_names=DEFECT_CLASSES,
+            )
+            print(f"     ✅ Green Defect model loaded: {defect_predictor}")
+        except FileNotFoundError:
+            print(f"     ⚠️  Green Defect model not found at {settings.DEFECT_MODEL_PATH}")
+
+    if roasted_yolo_predictor is None:
+        try:
+            roasted_yolo_predictor = YOLOv8ONNXPredictor(
+                model_path=settings.ROASTED_DEFECT_MODEL_PATH,
+                class_names=ROASTED_DEFECT_CLASSES,
+            )
+            print(f"     ✅ Roasted YOLO model loaded: {roasted_yolo_predictor}")
+        except (FileNotFoundError, Exception) as e:
+            print(f"     ℹ️  Roasted YOLO model not loaded ({e}). Fallback to dual-model mode.")
 
     print("✅ Application ready!\n")
     yield
@@ -160,6 +175,7 @@ async def health_check():
         "models": {
             "roast": roast_predictor is not None and roast_predictor.is_loaded(),
             "defect": defect_predictor is not None and defect_predictor.is_loaded(),
+            "roasted_yolo": roasted_yolo_predictor is not None and roasted_yolo_predictor.is_loaded(),
         },
     }
 
@@ -207,20 +223,45 @@ async def predict(request: Request, file: UploadFile = File(...)):
     start_time = time.perf_counter()
     result = {}
 
+    # Stage 1: Roast Level Router
+    roast_prediction = "Medium"
     if roast_predictor is not None:
         roast_result = roast_predictor.predict(image)
+        roast_prediction = roast_result["prediction"]
         result["roast"] = {
             "prediction": roast_result["prediction"],
             "confidence": roast_result["confidence"],
             "probabilities": roast_result["probabilities"],
         }
 
-    if defect_predictor is not None:
-        defect_result = defect_predictor.predict(image)
+    # Stage 2: Context-Aware Defect Audit
+    if roast_prediction == "Green" or roasted_yolo_predictor is None:
+        # Green bean SCA agricultural inspection (EfficientNet 17-class)
+        if defect_predictor is not None:
+            defect_result = defect_predictor.predict(image)
+            result["defect"] = {
+                "type": "green_agricultural",
+                "prediction": defect_result["prediction"],
+                "confidence": defect_result["confidence"],
+                "probabilities": defect_result["probabilities"],
+            }
+    else:
+        # Roasted bean batch mechanical inspection (YOLOv8 bounding boxes)
+        yolo_result = roasted_yolo_predictor.predict(image)
+        result["roasted_defect"] = {
+            "type": "roasted_mechanical",
+            "defect_count": yolo_result["defect_count"],
+            "defect_summary": yolo_result["defect_summary"],
+            "detections": yolo_result["detections"],
+            "annotated_image": yolo_result["annotated_image"],
+        }
+        # Maintain backward compatibility with existing "defect" key for frontend/tests
+        top_defect = max(yolo_result["defect_summary"].items(), key=lambda x: x[1])[0] if yolo_result["defect_summary"] else "None (Clean)"
         result["defect"] = {
-            "prediction": defect_result["prediction"],
-            "confidence": defect_result["confidence"],
-            "probabilities": defect_result["probabilities"],
+            "type": "roasted_mechanical",
+            "prediction": top_defect,
+            "confidence": 0.95 if yolo_result["defect_count"] > 0 else 0.99,
+            "probabilities": {cls: round(yolo_result["defect_summary"].get(cls, 0) / max(yolo_result["defect_count"], 1), 2) for cls in ROASTED_DEFECT_CLASSES},
         }
 
     total_time_ms = round((time.perf_counter() - start_time) * 1000, 2)

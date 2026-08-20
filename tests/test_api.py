@@ -33,6 +33,7 @@ def create_test_image(width: int = 224, height: int = 224, color: str = "red") -
 @pytest.fixture(autouse=True)
 def mock_dependencies():
     """Mock all external dependencies (DB, storage, models)."""
+    import app.main as main_module
 
     mock_roast_result = {
         "prediction": "Medium",
@@ -63,7 +64,20 @@ def mock_dependencies():
     mock_defect.predict.return_value = mock_defect_result
     mock_defect.is_loaded.return_value = True
 
-    with patch("app.main.init_db", new_callable=AsyncMock) as mock_init_db, \
+    mock_yolo = MagicMock()
+    mock_yolo.predict.return_value = {
+        "defect_count": 2,
+        "defect_summary": {"Quaker": 1, "Scorched": 1},
+        "detections": [
+            {"class": "Quaker", "confidence": 0.88, "box": [10.0, 10.0, 50.0, 50.0]},
+            {"class": "Scorched", "confidence": 0.92, "box": [60.0, 60.0, 100.0, 100.0]},
+        ],
+        "inference_time_ms": 15.2,
+        "annotated_image": "data:image/jpeg;base64,mockb64",
+    }
+    mock_yolo.is_loaded.return_value = True
+
+    with patch("app.main.init_db", new_callable=AsyncMock), \
          patch("app.main.close_db", new_callable=AsyncMock), \
          patch("app.main.init_storage", new_callable=AsyncMock), \
          patch("app.main.upload_image", new_callable=AsyncMock, return_value="https://example.com/img.jpg"), \
@@ -75,28 +89,21 @@ def mock_dependencies():
              "predictions_by_type": {"roast": 21, "defect": 21},
              "top_predicted_classes": {"Medium": 15, "Dark": 8},
          }):
-        # Patch the global predictors after import
-        import app.main as main_module
-        original_roast = main_module.roast_predictor
-        original_defect = main_module.defect_predictor
         main_module.roast_predictor = mock_roast
         main_module.defect_predictor = mock_defect
+        main_module.roasted_yolo_predictor = mock_yolo
 
         yield {
             "roast_predictor": mock_roast,
             "defect_predictor": mock_defect,
+            "roasted_yolo_predictor": mock_yolo,
         }
-
-        # Restore originals
-        main_module.roast_predictor = original_roast
-        main_module.defect_predictor = original_defect
 
 
 @pytest.fixture
-def client():
-    """Create a test client with mocked lifespan."""
+def client(mock_dependencies):
+    """Create a test client with mocked lifespan and predictors."""
     from app.main import app
-    # Use TestClient without lifespan to avoid real init
     with TestClient(app, raise_server_exceptions=False) as c:
         yield c
 
@@ -116,6 +123,7 @@ class TestHealthEndpoint:
         assert "models" in data
         assert data["models"]["roast"] is True
         assert data["models"]["defect"] is True
+        assert data["models"]["roasted_yolo"] is True
 
 
 # ── Predict Endpoint ────────────────────────────────────────────────────
@@ -139,17 +147,50 @@ class TestPredictEndpoint:
 
         # Check defect prediction
         assert "defect" in data
-        assert data["defect"]["prediction"] in [
-            "Broken", "Cut", "Dry Cherry", "Fade", "Floater",
-            "Full Black", "Full Sour", "Fungus Damage", "Husk",
-            "Immature", "Parchment", "Partial Black", "Partial Sour",
-            "Severe Insect Damage", "Shell", "Slight Insect Damage", "Withered",
-        ]
+        assert "prediction" in data["defect"]
         assert 0 <= data["defect"]["confidence"] <= 1
-        assert len(data["defect"]["probabilities"]) == 17
 
         # Check metadata
         assert "inference_time_ms" in data
+
+    def test_predict_green_bean_routing(self, client, mock_dependencies):
+        # Set roast prediction to Green
+        mock_dependencies["roast_predictor"].predict.return_value = {
+            "prediction": "Green",
+            "confidence": 0.98,
+            "probabilities": {"Dark": 0.01, "Green": 0.98, "Light": 0.005, "Medium": 0.005},
+            "inference_time_ms": 12.0,
+        }
+        img_bytes = create_test_image()
+        response = client.post(
+            "/api/predict",
+            files={"file": ("green_bean.jpg", img_bytes, "image/jpeg")},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["roast"]["prediction"] == "Green"
+        assert data["defect"]["type"] == "green_agricultural"
+        assert len(data["defect"]["probabilities"]) == 17
+
+    def test_predict_roasted_bean_yolo_routing(self, client, mock_dependencies):
+        # Set roast prediction to Dark
+        mock_dependencies["roast_predictor"].predict.return_value = {
+            "prediction": "Dark",
+            "confidence": 0.95,
+            "probabilities": {"Dark": 0.95, "Green": 0.01, "Light": 0.02, "Medium": 0.02},
+            "inference_time_ms": 12.0,
+        }
+        img_bytes = create_test_image()
+        response = client.post(
+            "/api/predict",
+            files={"file": ("dark_roast.jpg", img_bytes, "image/jpeg")},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["roast"]["prediction"] == "Dark"
+        assert "roasted_defect" in data
+        assert data["roasted_defect"]["defect_count"] == 2
+        assert "Quaker" in data["roasted_defect"]["defect_summary"]
 
     def test_predict_rejects_non_image(self, client):
         response = client.post(

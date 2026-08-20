@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     # ── ONNX Model Paths ────────────────────────────────────────────────
     ROAST_MODEL_PATH: str = "checkpoints/roast_model.onnx"
     DEFECT_MODEL_PATH: str = "checkpoints/defect_model.onnx"
+    ROASTED_DEFECT_MODEL_PATH: str = "checkpoints/defect_yolo.onnx"
 
     # ── Supabase PostgreSQL ─────────────────────────────────────────────
     DATABASE_URL: str = "sqlite+aiosqlite:///data/predictions.db"
