@@ -74,7 +74,7 @@
       </div>
       <div class="metric-divider"></div>
       <div class="metric-item">
-        <span class="metric-val">&lt; 50ms</span>
+        <span class="metric-val">~150ms</span>
         <span class="metric-lbl">Inference Latency</span>
       </div>
       <div class="metric-divider"></div>
@@ -180,7 +180,7 @@
             <div class="decision-icon">🟢</div>
             <div>
               <strong>RECOMMENDED ACTION: APPROVED FOR ROASTING</strong>
-              <p>Lot meets SCAA Grade 1 Specialty threshold (&lt; 10 primary defects per 350g). Safe to commit to $10,000 production roasters.</p>
+              <p>Lot meets high quality thresholds. Safe to commit to production roasters.</p>
             </div>
           </div>
         </div>
@@ -195,7 +195,7 @@
           <span class="inspection-id" id="inspection-id">INSPECTION #BN-84920</span>
         </div>
         <div class="workspace-meta">
-          Latency: <strong id="stat-time">—</strong> · Model: <strong>Dual EfficientNet-B0 (ONNX CPU)</strong>
+          Latency: <strong id="stat-time">—</strong> · Model: <strong>Tiered Hybrid ONNX (EfficientNet + YOLO)</strong>
         </div>
       </div>
 
@@ -205,9 +205,6 @@
           <div class="bean-view-wrapper">
             <img id="result-view-img" src="" alt="Evaluated Coffee Bean" />
             <div class="scanner-reticle"></div>
-            <div class="defect-bounding-box" id="defect-box">
-              <span class="box-label" id="box-label">Defect Area</span>
-            </div>
           </div>
           <div class="bean-image-caption">224×224 Spectral Chromatic Normalization</div>
         </div>
@@ -216,14 +213,14 @@
         <div class="score-telemetry-panel">
           <div class="score-card">
             <div class="score-header">
-              <span class="score-tag">BATCH QUALITY SCORE</span>
-              <span class="status-flag status-pass" id="status-flag">🟢 PASS — SPECIALTY GRADE</span>
+              <span class="score-tag">INSPECTION QUALITY SCORE</span>
+              <span class="status-flag status-pass" id="status-flag">🟢 PASS — CLEAN BEAN</span>
             </div>
             <div class="score-main">
               <div class="score-number" id="quality-score">92</div>
               <div class="score-denom">/ 100</div>
             </div>
-            <div class="score-verdict" id="score-verdict">SCAA Specialty Grade 1 Equivalent</div>
+            <div class="score-verdict" id="score-verdict">High Quality Clean Bean</div>
           </div>
 
           <!-- Key Diagnostic Attributes -->
@@ -242,7 +239,7 @@
             </div>
             <div class="attribute-row">
               <span class="attr-name">🛡️ Defect Severity Index</span>
-              <span class="attr-val" id="defect-severity">Low Risk (Grade 1 Tolerant)</span>
+              <span class="attr-val" id="defect-severity">Low Risk (Clean)</span>
             </div>
           </div>
         </div>
@@ -310,7 +307,7 @@
 
       <!-- Defect Breakdown Chart -->
       <div class="defect-breakdown-section">
-        <div class="breakdown-title">Most Common Physical Defects in Current Lot</div>
+        <div class="breakdown-title">Example Physical Defect Distribution</div>
         <div class="distribution-bars">
           <div class="dist-row">
             <span class="dist-label">Husk / Foreign Pod</span>
@@ -381,18 +378,18 @@
         </div>
         <div class="flow-step">
           <div class="step-badge">02</div>
-          <div class="step-title">Edge Preprocessing</div>
-          <p class="step-desc">Zero-dependency Pillow &amp; NumPy pipeline resizes and normalizes ImageNet tensors in &lt;5ms.</p>
+          <div class="step-title">Preprocessing</div>
+          <p class="step-desc">Fast Pillow &amp; NumPy pipeline prepares images.</p>
         </div>
         <div class="flow-step">
           <div class="step-badge">03</div>
-          <div class="step-title">Dual ONNX Engine</div>
-          <p class="step-desc">Decoupled EfficientNet-B0 ONNX Runtime executes on serverless CPU in sub-50ms.</p>
+          <div class="step-title">Hybrid ONNX Engine</div>
+          <p class="step-desc">EfficientNet and YOLOv8 execute locally on CPU.</p>
         </div>
         <div class="flow-step">
           <div class="step-badge">04</div>
-          <div class="step-title">Quality Telemetry</div>
-          <p class="step-desc">Generates 0-100 quality score, defect severity index, and logs audit to PostgreSQL via asyncpg.</p>
+          <div class="step-title">Telemetry</div>
+          <p class="step-desc">Generates quality score and logs audit to PostgreSQL.</p>
         </div>
       </div>
     </section>

@@ -229,36 +229,36 @@ function calculateQualityScore(roastResult, defectResult) {
   const defectConf = defectResult?.confidence || 0;
 
   // SCAA Defect Severity Categories
-  const primarySevere = ['Full Black', 'Full Sour', 'Fungus Damage', 'Severe Insect Damage'];
-  const secondaryModerate = ['Partial Black', 'Partial Sour', 'Broken', 'Cut', 'Shell', 'Floater'];
-  const millingProcessing = ['Husk', 'Parchment', 'Dry Cherry', 'Immature', 'Withered', 'Fade'];
+  const primarySevere = ['Full Black', 'Full Sour', 'Fungus Damage', 'Severe Insect Damage', 'Scorched', 'Burnt'];
+  const secondaryModerate = ['Partial Black', 'Partial Sour', 'Broken', 'Cut', 'Shell', 'Floater', 'Quaker'];
+  const millingProcessing = ['Husk', 'Parchment', 'Dry Cherry', 'Immature', 'Withered', 'Fade', 'Insect Damage'];
 
-  let severityText = 'Low Risk (Grade 1 SCAA Compliant)';
-  let verdictText = 'SCAA Specialty Grade 1 Equivalent';
+  let severityText = 'Low Risk (Clean)';
+  let verdictText = 'High Quality Clean Bean';
   let statusFlagClass = 'status-pass';
-  let statusFlagText = '🟢 PASS — SPECIALTY GRADE';
+  let statusFlagText = '🟢 PASS — CLEAN BEAN';
 
   if (primarySevere.includes(defectName)) {
     const penalty = 35 * defectConf;
     baseScore -= penalty;
-    severityText = 'Critical Risk (Primary SCAA Defect)';
-    verdictText = 'Off-Grade / Reject: Severe cup tainting defect detected';
+    severityText = 'Critical Risk (Primary Defect)';
+    verdictText = 'Off-Grade / Reject: Severe defect detected';
     statusFlagClass = 'status-defect';
     statusFlagText = '🔴 REJECT — CRITICAL DEFECT';
   } else if (secondaryModerate.includes(defectName)) {
     const penalty = 20 * defectConf;
     baseScore -= penalty;
-    severityText = 'Moderate Risk (Secondary SCAA Defect)';
-    verdictText = 'Exchange Grade 2: Minor cup impact, secondary sort advised';
+    severityText = 'Moderate Risk (Secondary Defect)';
+    verdictText = 'Minor cup impact, secondary sort advised';
     statusFlagClass = 'status-review';
     statusFlagText = '🟡 REVIEW — SECONDARY DEFECT';
   } else if (millingProcessing.includes(defectName)) {
     const penalty = 10 * defectConf;
     baseScore -= penalty;
-    severityText = 'Low Severity (Milling / Husk Artifact)';
-    verdictText = 'Specialty Grade 1: Tolerable threshing artifact';
+    severityText = 'Low Severity (Minor Defect)';
+    verdictText = 'Tolerable processing artifact';
     statusFlagClass = 'status-pass';
-    statusFlagText = '🟢 PASS — SPECIALTY GRADE';
+    statusFlagText = '🟢 PASS — MINOR DEFECT';
   }
 
   const finalScore = Math.max(Math.min(Math.round(baseScore), 99), 35);
