@@ -70,47 +70,55 @@ async def lifespan(app: FastAPI):
 
     print("🚀 Starting Coffee Bean Analyzer...")
 
-    # Initialize database
-    print("  📊 Initializing database...")
-    await init_db()
+    import asyncio
 
-    # Initialize cloud storage
-    print("  ☁️  Initializing storage...")
-    await init_storage()
+    # Initialize database and storage in the background to avoid blocking Uvicorn startup
+    # (Cloud Run requires the port to be bound quickly for health checks)
+    print("  📊 Scheduling database and storage initialization...")
+    asyncio.create_task(init_db())
+    asyncio.create_task(init_storage())
 
-    # Load ONNX models if not already set (e.g. by mocks or tests)
-    print("  🧠 Loading ONNX models...")
-    if roast_predictor is None:
-        try:
-            roast_predictor = ONNXPredictor(
-                model_path=settings.ROAST_MODEL_PATH,
-                class_names=ROAST_CLASSES,
-            )
-            print(f"     ✅ Roast model loaded: {roast_predictor}")
-        except FileNotFoundError:
-            print(f"     ⚠️  Roast model not found at {settings.ROAST_MODEL_PATH}")
+    async def load_models():
+        global roast_predictor, defect_predictor, roasted_yolo_predictor
+        import asyncio
 
-    if defect_predictor is None:
-        try:
-            defect_predictor = ONNXPredictor(
-                model_path=settings.DEFECT_MODEL_PATH,
-                class_names=DEFECT_CLASSES,
-            )
-            print(f"     ✅ Green Defect model loaded: {defect_predictor}")
-        except FileNotFoundError:
-            print(f"     ⚠️  Green Defect model not found at {settings.DEFECT_MODEL_PATH}")
+        print("  🧠 Loading ONNX models in background...")
+        # Run synchronous ONNX loading in thread pool to not block event loop
+        def _load():
+            global roast_predictor, defect_predictor, roasted_yolo_predictor
+            if roast_predictor is None:
+                try:
+                    roast_predictor = ONNXPredictor(
+                        model_path=settings.ROAST_MODEL_PATH,
+                        class_names=ROAST_CLASSES,
+                    )
+                    print(f"     ✅ Roast model loaded")
+                except FileNotFoundError:
+                    pass
+            if defect_predictor is None:
+                try:
+                    defect_predictor = ONNXPredictor(
+                        model_path=settings.DEFECT_MODEL_PATH,
+                        class_names=DEFECT_CLASSES,
+                    )
+                    print(f"     ✅ Green Defect model loaded")
+                except FileNotFoundError:
+                    pass
+            if roasted_yolo_predictor is None:
+                try:
+                    roasted_yolo_predictor = YOLOv8ONNXPredictor(
+                        model_path=settings.ROASTED_DEFECT_MODEL_PATH,
+                        class_names=ROASTED_DEFECT_CLASSES,
+                    )
+                    print(f"     ✅ Roasted YOLO model loaded")
+                except Exception as e:
+                    print(f"     ⚠️  YOLO model failed: {e}")
 
-    if roasted_yolo_predictor is None:
-        try:
-            roasted_yolo_predictor = YOLOv8ONNXPredictor(
-                model_path=settings.ROASTED_DEFECT_MODEL_PATH,
-                class_names=ROASTED_DEFECT_CLASSES,
-            )
-            print(f"     ✅ Roasted YOLO model loaded: {roasted_yolo_predictor}")
-        except (FileNotFoundError, Exception) as e:
-            print(f"     ℹ️  Roasted YOLO model not loaded ({e}). Fallback to dual-model mode.")
+        await asyncio.to_thread(_load)
+        print("✅ Models ready!")
 
-    print("✅ Application ready!\n")
+    asyncio.create_task(load_models())
+    print("✅ Application ready (warming up background tasks)!\n")
     yield
 
     # Shutdown
