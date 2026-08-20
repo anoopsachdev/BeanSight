@@ -3,391 +3,328 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="BeanSight — Artisanal Quality Assurance Studio. Minimalist AI tools for specialty coffee." />
-  <title>BeanSight — Quality Assurance Studio</title>
+  <meta name="description" content="BeanSight — Industrial AI Quality-Control Platform for Specialty Coffee Roasting and Green Coffee Lot Inspection." />
+  <title>BeanSight — Industrial Coffee Quality Inspection Platform</title>
   <link rel="stylesheet" href="/static/style.css" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@0,600;0,700;1,600;1,700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>☕</text></svg>" />
 </head>
 <body>
 
-  <!-- Loading Overlay -->
+  <!-- Loading State Overlay -->
   <div class="loading-overlay" id="loading-overlay">
-    <div class="loading-spinner">
-      <div class="spinner-ring"></div>
-      <div class="loading-text">
-        <div class="pulse-title editorial-text">Evaluating roast profile...</div>
-        <div class="pulse-subtitle">Running structural analysis</div>
-      </div>
+    <div class="loading-dialog">
+      <div class="loading-spinner-ring"></div>
+      <div class="loading-status-title">Executing AI Quality Inspection</div>
+      <div class="loading-status-step" id="loading-step-text">Preprocessing sample &amp; running ONNX inference...</div>
     </div>
   </div>
 
-  <!-- Toast Container -->
+  <!-- Toast Notification Container -->
   <div class="toast-container" id="toast-container"></div>
 
-  <div class="app-container">
+  <!-- Main Application Shell -->
+  <div class="app-shell">
 
-    <!-- ─── 1. Brand Header ────────────────────────── -->
+    <!-- ── 1. Top Industrial Header ──────────────────────────────── -->
     <header class="app-header">
-      <div class="brand-wrapper">
-        <div class="brand-logo-mark">☕</div>
-        <div class="brand-details">
-          <div class="brand-name-row">
-            <h1 class="brand-title">Bean<span>Sight</span></h1>
-            <span class="badge badge-beta">B2B Software</span>
-          </div>
-          <p class="brand-tagline">
-            Intelligent Q-Grading & Roast Consistency Analysis.
-          </p>
+      <div class="brand-block">
+        <div class="brand-icon">☕</div>
+        <div class="brand-text">
+          <h1>BeanSight <span class="platform-tag">QA Platform</span></h1>
+          <p class="brand-subtitle">Specialty Coffee Quality Inspection &amp; Roast Consistency Workstation</p>
         </div>
       </div>
 
-      <div class="header-actions">
-        <div class="status-pill" id="status-pill" title="Service Status">
-          <span class="status-indicator" id="health-dot"></span>
-          <span class="status-text" id="status-text">Connecting...</span>
+      <div class="header-telemetry">
+        <div class="system-status-badge" id="system-status-badge" title="Live Inference Service &amp; Storage Health">
+          <span class="status-dot" id="health-dot"></span>
+          <span id="health-status-text">Checking System...</span>
         </div>
+        <span class="system-env-tag">ONNX CPU • Serverless</span>
       </div>
     </header>
 
-    <!-- ─── 2. Top Operational Metrics ───────────────────────────── -->
-    <div class="metrics-bar">
-      <div class="metric-item">
-        <span class="metric-val">98.7%</span>
-        <span class="metric-lbl">Model Accuracy</span>
-      </div>
-      <div class="metric-divider"></div>
-      <div class="metric-item">
-        <span class="metric-val">~150ms</span>
-        <span class="metric-lbl">Inference Latency</span>
-      </div>
-      <div class="metric-divider"></div>
-      <div class="metric-item">
-        <span class="metric-val">17</span>
-        <span class="metric-lbl">Defect Classes</span>
-      </div>
-      <div class="metric-divider"></div>
-      <div class="metric-item">
-        <span class="metric-val">4</span>
-        <span class="metric-lbl">Roast Profiles</span>
-      </div>
-      <div class="metric-divider"></div>
-      <div class="metric-item">
-        <span class="metric-val" id="inspected-counter">1,284</span>
-        <span class="metric-lbl">Samples Evaluated</span>
-      </div>
-    </div>
-
-    <!-- ─── 3. Bean Inspection Station (Core Workflow) ───────────── -->
-    <section class="flat-card inspection-station" id="inspection-card">
-      <div class="inspection-mode-header">
-        <div class="card-title">
-          <span class="editorial-text">Quality Assurance Studio</span>
-        </div>
-        
-        <!-- Inspection Tabs -->
-        <div class="mode-tabs">
-          <button class="mode-tab active" id="tab-green" type="button">Tier 1: Green Inbound QA</button>
-          <button class="mode-tab" id="tab-roasted" type="button">Tier 2: Post-Roast Batch QA</button>
-        </div>
-      </div>
-
-      <!-- Unified Upload Zone -->
-      <div class="upload-zone-compact" id="upload-zone">
-        <div id="upload-prompt">
-          <div class="upload-icon-small">📷</div>
-          <div class="upload-text-compact">
-            <p class="upload-headline-compact"><strong>Drag &amp; drop sample image</strong> or <u>browse file</u></p>
-            <div class="upload-chips">
-              <span class="chip">High Resolution</span>
-              <span class="chip">Auto-Cropped 224px</span>
+    <!-- ── 2. Mode Selector (Segmented Switch) ──────────────────── -->
+    <section class="mode-selector-panel">
+      <div class="mode-segmented-control">
+        <button type="button" class="mode-btn active" id="tab-green">
+          <div class="mode-icon-box">🌱</div>
+          <div>
+            <div class="mode-info-title">
+              <span>GREEN COFFEE</span>
+              <span class="mode-badge">17 Defect Classes</span>
             </div>
+            <div class="mode-info-desc">Inbound Lot Inspection (Agricultural Defect Diagnostics)</div>
           </div>
-        </div>
-        <img class="upload-preview-compact" id="upload-preview" style="display: none;" alt="Inspected Bean Preview" />
-        <input type="file" class="upload-input" id="upload-input" accept="image/jpeg,image/png,image/webp,image/bmp" />
-      </div>
-
-      <!-- Sample Triggers for Instant Testing -->
-      <div class="quick-samples" id="quick-samples">
-        <span class="quick-sample-lbl">Load sample:</span>
-        <button type="button" class="btn-sample" data-sample="dark">Dark Roast Batch</button>
-        <button type="button" class="btn-sample" data-sample="defect">Green Bean Defect</button>
-        <button type="button" class="btn-sample" data-sample="green">Clean Green Bean</button>
-      </div>
-
-      <div class="upload-actions" id="upload-actions" style="display: none;">
-        <button class="btn btn-primary" id="analyze-btn" type="button">
-          Evaluate Quality
         </button>
-        <button class="btn btn-secondary" id="clear-btn" type="button">
-          Reset Station
+
+        <button type="button" class="mode-btn" id="tab-roasted">
+          <div class="mode-icon-box">🔥</div>
+          <div>
+            <div class="mode-info-title">
+              <span>ROASTED BATCH</span>
+              <span class="mode-badge">YOLOv8 Detection</span>
+            </div>
+            <div class="mode-info-desc">Post-Roast Production QA (Batch Uniformity &amp; Defect Localizer)</div>
+          </div>
         </button>
       </div>
     </section>
 
-    <!-- ─── 4. Results Workspace ─────────────────────────────────── -->
-    <section class="flat-card results-workspace" id="results-section">
-      <div class="workspace-header">
-        <div class="workspace-title-row">
-          <span class="card-title editorial-text">Evaluation Report</span>
-        </div>
-        <div class="workspace-meta">
-          <span class="inspection-id" id="inspection-id">INSPECTION #BN-84920</span>
-        </div>
-      </div>
+    <!-- ── 3. Primary Inspection Workstation ────────────────────── -->
+    <main class="workstation-grid">
 
-      <div class="inspection-grid">
-        <!-- Left: Uploaded Target View -->
-        <div class="bean-view-panel">
-          <div class="bean-view-wrapper">
-            <img id="result-view-img" src="" alt="Evaluated Coffee Sample" />
-            <!-- Note: scanner reticle has been removed per instructions -->
+      <!-- Left Column: Sample Ingestion & Capture -->
+      <section class="qa-card">
+        <div class="qa-card-header">
+          <div class="qa-card-title">
+            <span>📷 Sample Ingestion &amp; Capture</span>
           </div>
-          <div class="bean-image-caption">Visual Profile</div>
+          <span class="system-env-tag" id="mode-context-tag">Mode: Green Bean Lot</span>
         </div>
 
-        <!-- Right: Quality Score & Evaluation -->
-        <div class="score-telemetry-panel">
-          
-          <!-- Single Bean / Green Score Card -->
-          <div class="score-card" id="green-score-card">
-            <div class="score-header">
-              <span class="score-tag">SCAA Quality Score</span>
-              <span class="status-flag status-pass" id="status-flag">🟢 PASS — CLEAN BEAN</span>
-            </div>
-            <div class="score-main">
-              <div class="score-number" id="quality-score">92</div>
-              <div class="score-denom">/ 100</div>
-            </div>
-            <div class="score-verdict editorial-text" id="score-verdict">High Quality Clean Bean</div>
-          </div>
+        <div class="qa-card-body">
+          <div class="upload-container">
 
-          <!-- Batch / Roasted Result Card -->
-          <div class="score-card" id="roasted-score-card" style="display: none;">
-            <div class="score-header">
-              <span class="score-tag">Batch Uniformity</span>
-              <span class="status-flag status-pass" id="batch-status-flag">🟢 PRODUCTION READY</span>
-            </div>
-            <div class="score-main">
-              <div class="score-number" id="batch-uniformity">98.2</div>
-              <div class="score-denom">% Uniform</div>
-            </div>
-            <div class="score-verdict editorial-text" id="batch-verdict">Consistent Roast Profile</div>
-          </div>
-
-          <!-- Key Diagnostic Attributes -->
-          <div class="attribute-list">
-            <div class="attribute-row">
-              <span class="attr-name">Roast Degree</span>
-              <span class="attr-val" id="roast-badge">—</span>
-            </div>
-            <div class="attribute-row">
-              <span class="attr-name" id="defect-lbl">Physical Defect</span>
-              <span class="attr-val" id="defect-badge">—</span>
-            </div>
-            <div class="attribute-row">
-              <span class="attr-name">Cup Profile Impact</span>
-              <span class="attr-val" id="defect-severity">Low Risk (Clean)</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Collapsible Spectrum Breakdown Button (Green Only) -->
-      <div id="spectrum-container">
-        <button class="btn-spectrum-toggle" id="btn-spectrum-toggle" type="button">
-          View 17-Class Spectrum &amp; Probability Distribution ▼
-        </button>
-
-        <div class="spectrum-collapsible" id="spectrum-collapsible" style="display: none;">
-          <div class="spectrum-grid">
-            <div class="spectrum-card">
-              <div class="spectrum-card-title">Roast Level Spectrum</div>
-              <div class="prob-bars" id="roast-bars"></div>
-            </div>
-            <div class="spectrum-card">
-              <div class="spectrum-card-title">Green Bean Defect Diagnostic</div>
-              <div class="prob-bars-scroll">
-                <div class="prob-bars" id="defect-bars"></div>
+            <!-- State 1: Dropzone Box (Empty) -->
+            <div class="dropzone-box" id="dropzone-box">
+              <input type="file" id="file-input" class="file-input" accept="image/jpeg,image/png,image/webp,image/bmp" style="display:none;" />
+              <div class="dropzone-icon-circle">⇪</div>
+              <div class="dropzone-main-text" id="dropzone-headline">Upload sample image for inspection</div>
+              <div class="dropzone-sub-text">Drag &amp; drop file here, or click to browse</div>
+              <div class="dropzone-tags">
+                <span class="dropzone-tag">JPG / PNG / WEBP</span>
+                <span class="dropzone-tag">Max 10 MB</span>
+                <span class="dropzone-tag">224×224 Normalization</span>
               </div>
             </div>
+
+            <!-- State 2: Sample Ready Preview (Active File) -->
+            <div class="sample-preview-container" id="sample-preview-container">
+              <img id="sample-preview-img" class="sample-preview-img" src="" alt="Loaded Sample Preview" />
+              <div class="sample-meta-row">
+                <span class="sample-filename" id="sample-filename">sample.jpg</span>
+                <span id="sample-filesize">0 KB</span>
+              </div>
+            </div>
+
+            <!-- Demo Samples Utility Bar -->
+            <div class="demo-samples-section">
+              <span class="demo-sample-label">Demo Fixtures:</span>
+              <div class="demo-button-group">
+                <button type="button" class="btn-demo" data-fixture="green_clean">Green: Clean</button>
+                <button type="button" class="btn-demo" data-fixture="green_defect">Green: Defect (Parchment)</button>
+                <button type="button" class="btn-demo" data-fixture="roasted_dark">Roasted: Dark Profile</button>
+                <button type="button" class="btn-demo" data-fixture="roasted_defect">Roasted: Batch Defect</button>
+              </div>
+            </div>
+
+            <!-- Action Controls -->
+            <div class="workstation-actions">
+              <button type="button" class="btn-primary" id="analyze-btn" disabled>
+                <span>⚡ Run AI Inspection</span>
+              </button>
+              <button type="button" class="btn-secondary" id="clear-btn">
+                <span>✕ Reset</span>
+              </button>
+            </div>
+
+          </div>
+        </div>
+      </section>
+
+      <!-- Right Column: Inspection Results & Decision -->
+      <section class="qa-card">
+        <div class="qa-card-header">
+          <div class="qa-card-title">
+            <span>🔬 Inspection Results &amp; Decision</span>
+          </div>
+          <span class="system-env-tag" id="inspection-id-badge">ID: Standby</span>
+        </div>
+
+        <div class="qa-card-body">
+
+          <!-- Standby Empty State -->
+          <div class="results-placeholder" id="results-placeholder">
+            <div class="results-placeholder-icon">📋</div>
+            <div style="font-weight: 700; color: var(--text-secondary);">No Sample Evaluated</div>
+            <div style="font-size: 0.78rem; max-width: 280px;">Ingest a sample photograph on the left and click "Run AI Inspection" to generate quality telemetry.</div>
+          </div>
+
+          <!-- Active Result Container -->
+          <div class="results-active-container" id="results-active-container">
+
+            <!-- 1. Operational Status Banner (PASS / REVIEW / REJECT) -->
+            <div class="status-verdict-banner pass" id="status-verdict-banner">
+              <div class="verdict-left">
+                <div class="verdict-icon" id="verdict-icon">✓</div>
+                <div>
+                  <div class="verdict-title" id="verdict-title">PASS — QUALITY STANDARD MET</div>
+                  <div class="verdict-subtitle" id="verdict-subtitle">Clean sample with no critical defects detected</div>
+                </div>
+              </div>
+              <div class="verdict-confidence-badge" id="verdict-confidence">98.5% CONF</div>
+            </div>
+
+            <!-- 2. Evidence Viewport (Prominent Image with Bounding Boxes if YOLO) -->
+            <div class="evidence-viewport">
+              <img id="evidence-image" class="evidence-img" src="" alt="Evaluated Sample Evidence" />
+              <div class="evidence-tag" id="evidence-tag">EVIDENCE VIEW: INPUT SAMPLE</div>
+            </div>
+
+            <!-- 3. Key Detection Telemetry Table -->
+            <div class="detection-grid">
+              <div class="detection-cell">
+                <span class="detection-label">Roast Profile</span>
+                <span class="detection-value" id="det-roast-val">—</span>
+              </div>
+              <div class="detection-cell">
+                <span class="detection-label" id="det-defect-label">Detected Classification</span>
+                <span class="detection-value" id="det-defect-val">—</span>
+              </div>
+              <div class="detection-cell">
+                <span class="detection-label">Severity Level</span>
+                <span class="detection-value" id="det-severity-val">—</span>
+              </div>
+              <div class="detection-cell">
+                <span class="detection-label">Inference Latency</span>
+                <span class="detection-value" id="det-latency-val">—</span>
+              </div>
+            </div>
+
+            <!-- 4. Actionable Operator Recommendation Box -->
+            <div class="operator-action-box">
+              <div class="operator-action-icon">ℹ</div>
+              <div class="operator-action-text">
+                <strong id="rec-title">RECOMMENDED OPERATOR ACTION: ACCEPT SAMPLE</strong>
+                <p id="rec-desc">Sample conforms to clean green coffee grade requirements. Safe to commit to roasting inventory.</p>
+              </div>
+            </div>
+
+            <!-- 5. Collapsible Probability Spectrum -->
+            <div id="spectrum-drawer-wrapper">
+              <button type="button" class="btn-spectrum-collapsible" id="spectrum-toggle-btn">
+                <span>View Full Class Probability Distribution</span>
+                <span id="spectrum-arrow">▼</span>
+              </button>
+              <div class="spectrum-drawer" id="spectrum-drawer">
+                <div class="spectrum-bars-list" id="spectrum-bars-list"></div>
+              </div>
+            </div>
+
+          </div>
+
+        </div>
+      </section>
+
+    </main>
+
+    <!-- ── 4. Operational Analytics Dashboard ────────────────────── -->
+    <section class="analytics-section">
+      <div class="section-header-clean">
+        <div class="section-title">
+          <span>📈 Operational Quality Analytics</span>
+        </div>
+        <span class="section-meta-tag" id="analytics-source-tag">Live Database Telemetry</span>
+      </div>
+
+      <!-- Live KPIs -->
+      <div class="kpi-grid">
+        <div class="kpi-stat-card">
+          <span class="kpi-stat-title">Total Processed Samples</span>
+          <span class="kpi-stat-value" id="stat-total-count">0</span>
+          <span class="kpi-stat-subtext">Logged in production database</span>
+        </div>
+
+        <div class="kpi-stat-card">
+          <span class="kpi-stat-title">Avg. Inference Latency</span>
+          <span class="kpi-stat-value" id="stat-avg-latency">0 ms</span>
+          <span class="kpi-stat-subtext">CPU execution runtime</span>
+        </div>
+
+        <div class="kpi-stat-card">
+          <span class="kpi-stat-title">Defect Flag Rate</span>
+          <span class="kpi-stat-value" id="stat-defect-rate" style="color: var(--review);">0.0%</span>
+          <span class="kpi-stat-subtext">Evaluations flagged as defect</span>
+        </div>
+
+        <div class="kpi-stat-card">
+          <span class="kpi-stat-title">Inference Engine</span>
+          <span class="kpi-stat-value" style="font-size: 1.25rem; color: var(--accent); margin-top: 10px;">Dual ONNX</span>
+          <span class="kpi-stat-subtext">EfficientNet + YOLOv8 Active</span>
+        </div>
+      </div>
+
+      <!-- Distribution Breakdown Chart -->
+      <div class="analytics-chart-panel">
+        <div class="chart-header">Historical Defect &amp; Profile Distribution</div>
+        <div class="chart-distribution-bars" id="analytics-distribution-bars">
+          <div style="color: var(--text-muted); font-size: 0.8rem; text-align: center; padding: 20px;">
+            Loading live aggregated records from Supabase PostgreSQL...
           </div>
         </div>
       </div>
     </section>
 
-    <!-- ─── 5. Quality Overview & Analytics Dashboard ────────────── -->
-    <section class="flat-card analytics-dashboard" id="analytics-section">
-      <div class="card-header-clean">
-        <div class="card-title">
-          <span class="editorial-text">Quality Overview &amp; Analytics</span>
+    <!-- ── 5. Quality Audit Log Table ────────────────────────────── -->
+    <section class="audit-section">
+      <div class="section-header-clean">
+        <div class="section-title">
+          <span>📋 Quality Audit Log</span>
         </div>
-        <span class="card-subtitle-badge">Last 24 Hours</span>
+        <span class="section-meta-tag">Recent 30 Evaluations</span>
       </div>
 
-      <div class="analytics-toggle">
-        <button class="analytics-btn active" id="btn-analytics-green">Green Lot Analytics</button>
-        <button class="analytics-btn" id="btn-analytics-roasted">Roasted Batch Analytics</button>
-      </div>
+      <div class="audit-table-card">
+        <div class="audit-table-header-row">
+          <div style="font-size: 0.76rem; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em;">
+            Filter Evaluations
+          </div>
+          <div class="audit-filter-tabs">
+            <button type="button" class="audit-filter-btn active" data-filter="all">ALL</button>
+            <button type="button" class="audit-filter-btn" data-filter="pass">PASS</button>
+            <button type="button" class="audit-filter-btn" data-filter="review">REVIEW</button>
+            <button type="button" class="audit-filter-btn" data-filter="defect">DEFECT</button>
+          </div>
+        </div>
 
-      <div class="overview-kpis" id="analytics-green-view">
-        <div class="kpi-card">
-          <span class="kpi-title">Inbound Inspections</span>
-          <span class="kpi-value">84</span>
-          <span class="kpi-trend">↑ +5% vs yesterday</span>
-        </div>
-        <div class="kpi-card">
-          <span class="kpi-title">Defect Rate</span>
-          <span class="kpi-value">8.4%</span>
-          <span class="kpi-trend">↓ -2.1% (Healthy lot)</span>
-        </div>
-        <div class="kpi-card">
-          <span class="kpi-title">Most Common Defect</span>
-          <span class="kpi-value" style="font-size: 1.2rem; margin-top: 20px;">Husk</span>
-        </div>
-        <div class="kpi-card">
-          <span class="kpi-title">Supplier Quality</span>
-          <span class="kpi-value">Grade 1</span>
-        </div>
-      </div>
-
-      <div class="overview-kpis" id="analytics-roasted-view" style="display: none;">
-        <div class="kpi-card">
-          <span class="kpi-title">Batches Evaluated</span>
-          <span class="kpi-value">40</span>
-          <span class="kpi-trend">Consistent output</span>
-        </div>
-        <div class="kpi-card">
-          <span class="kpi-title">Scorched Beans</span>
-          <span class="kpi-value">0.8%</span>
-          <span class="kpi-trend">Within tolerance</span>
-        </div>
-        <div class="kpi-card">
-          <span class="kpi-title">Quaker Count</span>
-          <span class="kpi-value">12</span>
-          <span class="kpi-trend">Across 40 batches</span>
-        </div>
-        <div class="kpi-card">
-          <span class="kpi-title">Uniformity</span>
-          <span class="kpi-value">98.2%</span>
-        </div>
-      </div>
-
-      <!-- Defect Breakdown Chart (Green Example) -->
-      <div class="defect-breakdown-section" id="analytics-chart-green">
-        <div class="breakdown-title">Inbound Green Bean Defect Distribution</div>
-        <div class="distribution-bars">
-          <div class="dist-row">
-            <span class="dist-label">Husk / Foreign Pod</span>
-            <div class="dist-track"><div class="dist-fill" style="width: 42%;"></div></div>
-            <span class="dist-pct">42%</span>
-          </div>
-          <div class="dist-row">
-            <span class="dist-label">Dry Cherry</span>
-            <div class="dist-track"><div class="dist-fill" style="width: 27%;"></div></div>
-            <span class="dist-pct">27%</span>
-          </div>
-          <div class="dist-row">
-            <span class="dist-label">Broken Bean</span>
-            <div class="dist-track"><div class="dist-fill" style="width: 19%;"></div></div>
-            <span class="dist-pct">19%</span>
-          </div>
-          <div class="dist-row">
-            <span class="dist-label">Insect Damage</span>
-            <div class="dist-track"><div class="dist-fill" style="width: 12%;"></div></div>
-            <span class="dist-pct">12%</span>
-          </div>
-        </div>
-      </div>
-      
-      <!-- Roasted Example Chart -->
-      <div class="defect-breakdown-section" id="analytics-chart-roasted" style="display: none;">
-        <div class="breakdown-title">Post-Roast Quality Issues</div>
-        <div class="distribution-bars">
-          <div class="dist-row">
-            <span class="dist-label">Quaker (Under-roasted)</span>
-            <div class="dist-track"><div class="dist-fill" style="width: 60%; background: #C28E46;"></div></div>
-            <span class="dist-pct">60%</span>
-          </div>
-          <div class="dist-row">
-            <span class="dist-label">Scorched</span>
-            <div class="dist-track"><div class="dist-fill" style="width: 25%; background: #BA574F;"></div></div>
-            <span class="dist-pct">25%</span>
-          </div>
-          <div class="dist-row">
-            <span class="dist-label">Broken</span>
-            <div class="dist-track"><div class="dist-fill" style="width: 15%;"></div></div>
-            <span class="dist-pct">15%</span>
-          </div>
+        <div class="audit-table-wrap">
+          <table class="audit-table">
+            <thead>
+              <tr>
+                <th class="audit-thumb-cell">Evidence</th>
+                <th>Sample File</th>
+                <th>Mode</th>
+                <th>Detected Class</th>
+                <th>Confidence</th>
+                <th>Decision</th>
+                <th>Timestamp</th>
+              </tr>
+            </thead>
+            <tbody id="audit-table-body">
+              <tr>
+                <td colspan="7" class="audit-empty-state">Loading audit logs...</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </div>
     </section>
 
-    <!-- ─── 6. Recent Quality Log ────────────────────────────────── -->
-    <section class="flat-card history-section" id="history-section">
-      <div class="history-header-row">
-        <div class="card-title">
-          <span class="editorial-text">Quality Audit Log</span>
-        </div>
-        
-        <!-- Filter Tabs -->
-        <div class="history-filters">
-          <button class="filter-btn active" data-filter="all" type="button">ALL</button>
-          <button class="filter-btn" data-filter="pass" type="button">PASS</button>
-          <button class="filter-btn" data-filter="review" type="button">REVIEW</button>
-          <button class="filter-btn" data-filter="defect" type="button">DEFECTS</button>
-        </div>
+    <!-- ── 6. Compact System Specifications ──────────────────────── -->
+    <footer class="system-spec-panel">
+      <div class="spec-left">
+        <span class="spec-item"><strong>BeanSight</strong> v2.0 Production</span>
+        <span class="spec-item">Architecture: <strong>EfficientNet-B0 + YOLOv8 (ONNX CPU)</strong></span>
+        <span class="spec-item">Database: <strong>Supabase PostgreSQL</strong></span>
       </div>
-
-      <div class="history-list" id="history-list">
-        <div class="history-empty">Loading audit logs...</div>
-      </div>
-    </section>
-
-    <!-- ─── 7. System Architecture ─────────────────────────── -->
-    <section class="flat-card system-flow-section">
-      <div class="card-header-clean">
-        <div class="card-title">
-          <span class="editorial-text">System Architecture</span>
-        </div>
-      </div>
-
-      <div class="flow-steps-grid">
-        <div class="flow-step">
-          <div class="step-badge">01</div>
-          <div class="step-title">Sample Capture</div>
-          <p class="step-desc">High-resolution green or roasted bean photograph uploaded via browser or mobile camera.</p>
-        </div>
-        <div class="flow-step">
-          <div class="step-badge">02</div>
-          <div class="step-title">Preprocessing</div>
-          <p class="step-desc">Fast Pillow &amp; NumPy pipeline prepares images.</p>
-        </div>
-        <div class="flow-step">
-          <div class="step-badge">03</div>
-          <div class="step-title">Hybrid ONNX Engine</div>
-          <p class="step-desc">EfficientNet and YOLOv8 execute locally on CPU.</p>
-        </div>
-        <div class="flow-step">
-          <div class="step-badge">04</div>
-          <div class="step-title">Quality Assurance</div>
-          <p class="step-desc">Generates quality score and logs audit to PostgreSQL.</p>
-        </div>
-      </div>
-    </section>
-
-    <!-- ─── 8. Footer ───────────────────────────────────────────── -->
-    <footer class="app-footer">
-      <div class="footer-content">
-        <p class="footer-title"><strong>BeanSight</strong> — Quality Assurance Studio</p>
-        <p class="footer-sub">Engineered with PyTorch, ONNX Runtime (CPU Provider), FastAPI, Supabase PostgreSQL, and Google Cloud Run.</p>
-        <div class="footer-links">
-          <a href="https://github.com/anoopsachdev/BeanSight" target="_blank" rel="noopener noreferrer">GitHub</a>
-          <a href="/health" target="_blank">Health Status</a>
-        </div>
+      <div class="spec-links">
+        <a href="https://github.com/anoopsachdev/BeanSight" target="_blank" rel="noopener noreferrer" class="spec-link">GitHub Repository ↗</a>
+        <span>•</span>
+        <a href="/health" target="_blank" rel="noopener noreferrer" class="spec-link">Health API ↗</a>
       </div>
     </footer>
 

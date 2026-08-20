@@ -1,35 +1,70 @@
 /**
- * BeanSight — Artisanal Quality Assurance Studio
+ * BeanSight — Industrial Quality Inspection Platform
+ * Frontend Telemetry & Decision Controller
  */
 
-// ── State ──────────────────────────────────────────────────────────────
+// ── State Management ───────────────────────────────────────────────────
 
+let activeMode = 'green'; // 'green' | 'roasted'
 let selectedFile = null;
 let rawHistoryData = [];
 let activeFilter = 'all';
+let statsData = null;
 
-// ── DOM References ─────────────────────────────────────────────────────
+// ── DOM Element References ─────────────────────────────────────────────
 
-const uploadZone          = document.getElementById('upload-zone');
-const uploadInput         = document.getElementById('upload-input');
-const uploadPrompt        = document.getElementById('upload-prompt');
-const uploadPreview       = document.getElementById('upload-preview');
-const uploadActions       = document.getElementById('upload-actions');
-const analyzeBtn          = document.getElementById('analyze-btn');
-const clearBtn            = document.getElementById('clear-btn');
-const resultsSection      = document.getElementById('results-section');
-const loadingOverlay      = document.getElementById('loading-overlay');
-const toastContainer      = document.getElementById('toast-container');
-const healthDot           = document.getElementById('health-dot');
-const statusText          = document.getElementById('status-text');
-const historyList         = document.getElementById('history-list');
-const spectrumToggleBtn   = document.getElementById('btn-spectrum-toggle');
-const spectrumCollapsible = document.getElementById('spectrum-collapsible');
-const tabGreen            = document.getElementById('tab-green');
-const tabRoasted          = document.getElementById('tab-roasted');
-const inspectedCounter    = document.getElementById('inspected-counter');
+const tabGreen              = document.getElementById('tab-green');
+const tabRoasted            = document.getElementById('tab-roasted');
+const modeContextTag        = document.getElementById('mode-context-tag');
+const dropzoneBox           = document.getElementById('dropzone-box');
+const fileInput             = document.getElementById('file-input');
+const dropzoneHeadline      = document.getElementById('dropzone-headline');
+const samplePreviewContainer= document.getElementById('sample-preview-container');
+const samplePreviewImg      = document.getElementById('sample-preview-img');
+const sampleFilename        = document.getElementById('sample-filename');
+const sampleFilesize        = document.getElementById('sample-filesize');
+const analyzeBtn            = document.getElementById('analyze-btn');
+const clearBtn              = document.getElementById('clear-btn');
 
-// ── Toast Notifications ────────────────────────────────────────────────
+const resultsPlaceholder    = document.getElementById('results-placeholder');
+const resultsActiveContainer= document.getElementById('results-active-container');
+const inspectionIdBadge     = document.getElementById('inspection-id-badge');
+
+const statusVerdictBanner   = document.getElementById('status-verdict-banner');
+const verdictIcon           = document.getElementById('verdict-icon');
+const verdictTitle          = document.getElementById('verdict-title');
+const verdictSubtitle       = document.getElementById('verdict-subtitle');
+const verdictConfidence     = document.getElementById('verdict-confidence');
+
+const evidenceImage         = document.getElementById('evidence-image');
+const evidenceTag           = document.getElementById('evidence-tag');
+
+const detRoastVal           = document.getElementById('det-roast-val');
+const detDefectLabel        = document.getElementById('det-defect-label');
+const detDefectVal          = document.getElementById('det-defect-val');
+const detSeverityVal        = document.getElementById('det-severity-val');
+const detLatencyVal         = document.getElementById('det-latency-val');
+
+const recTitle              = document.getElementById('rec-title');
+const recDesc               = document.getElementById('rec-desc');
+
+const spectrumToggleBtn     = document.getElementById('spectrum-toggle-btn');
+const spectrumArrow         = document.getElementById('spectrum-arrow');
+const spectrumDrawer        = document.getElementById('spectrum-drawer');
+const spectrumBarsList      = document.getElementById('spectrum-bars-list');
+
+const statTotalCount        = document.getElementById('stat-total-count');
+const statAvgLatency        = document.getElementById('stat-avg-latency');
+const statDefectRate        = document.getElementById('stat-defect-rate');
+const analyticsDistBars     = document.getElementById('analytics-distribution-bars');
+
+const auditTableBody        = document.getElementById('audit-table-body');
+const healthDot             = document.getElementById('health-dot');
+const healthStatusText      = document.getElementById('health-status-text');
+const loadingOverlay        = document.getElementById('loading-overlay');
+const toastContainer        = document.getElementById('toast-container');
+
+// ── Toast System ───────────────────────────────────────────────────────
 
 function showToast(message, type = 'info', duration = 3500) {
   const toast = document.createElement('div');
@@ -38,89 +73,46 @@ function showToast(message, type = 'info', duration = 3500) {
   toastContainer.appendChild(toast);
 
   setTimeout(() => {
-    toast.style.animation = 'toastOut 0.3s ease-in forwards';
-    setTimeout(() => toast.remove(), 300);
+    toast.style.animation = 'toastIn 0.2s ease reverse forwards';
+    setTimeout(() => toast.remove(), 250);
   }, duration);
 }
 
-// ── Loading State ──────────────────────────────────────────────────────
+// ── Mode Switcher ──────────────────────────────────────────────────────
 
-function setLoading(isLoading) {
-  loadingOverlay.classList.toggle('active', isLoading);
-  if (analyzeBtn) analyzeBtn.disabled = isLoading;
-}
-
-// ── Mode Switcher (Green vs Roasted Tabs) ──────────────────────────────
-
-function setUITab(mode) {
+function setInspectionMode(mode) {
+  activeMode = mode;
   if (mode === 'green') {
     tabGreen.classList.add('active');
     tabRoasted.classList.remove('active');
+    modeContextTag.textContent = 'Mode: Green Bean Inbound';
+    dropzoneHeadline.textContent = 'Upload green coffee sample for lot inspection';
   } else {
     tabRoasted.classList.add('active');
     tabGreen.classList.remove('active');
+    modeContextTag.textContent = 'Mode: Roasted Batch QA';
+    dropzoneHeadline.textContent = 'Upload roasted coffee batch for uniformity scan';
   }
 }
 
 if (tabGreen && tabRoasted) {
-  tabGreen.addEventListener('click', () => setUITab('green'));
-  tabRoasted.addEventListener('click', () => setUITab('roasted'));
+  tabGreen.addEventListener('click', () => setInspectionMode('green'));
+  tabRoasted.addEventListener('click', () => setInspectionMode('roasted'));
 }
 
-// ── Analytics Dashboard Toggle ─────────────────────────────────────────
+// ── File Ingestion & Dropzone ──────────────────────────────────────────
 
-const btnAnalyticsGreen = document.getElementById('btn-analytics-green');
-const btnAnalyticsRoasted = document.getElementById('btn-analytics-roasted');
-const analyticsGreenView = document.getElementById('analytics-green-view');
-const analyticsRoastedView = document.getElementById('analytics-roasted-view');
-const chartGreen = document.getElementById('analytics-chart-green');
-const chartRoasted = document.getElementById('analytics-chart-roasted');
-
-if (btnAnalyticsGreen && btnAnalyticsRoasted) {
-  btnAnalyticsGreen.addEventListener('click', () => {
-    btnAnalyticsGreen.classList.add('active');
-    btnAnalyticsRoasted.classList.remove('active');
-    analyticsGreenView.style.display = 'grid';
-    analyticsRoastedView.style.display = 'none';
-    chartGreen.style.display = 'block';
-    chartRoasted.style.display = 'none';
-  });
-
-  btnAnalyticsRoasted.addEventListener('click', () => {
-    btnAnalyticsRoasted.classList.add('active');
-    btnAnalyticsGreen.classList.remove('active');
-    analyticsGreenView.style.display = 'none';
-    analyticsRoastedView.style.display = 'grid';
-    chartGreen.style.display = 'none';
-    chartRoasted.style.display = 'block';
-  });
-}
-
-// ── Collapsible Spectrum Details ───────────────────────────────────────
-
-if (spectrumToggleBtn && spectrumCollapsible) {
-  spectrumToggleBtn.addEventListener('click', () => {
-    const isHidden = spectrumCollapsible.style.display === 'none';
-    spectrumCollapsible.style.display = isHidden ? 'block' : 'none';
-    spectrumToggleBtn.textContent = isHidden 
-      ? 'Hide Detailed Spectrum ▲' 
-      : 'View 17-Class Spectrum & Probability Distribution ▼';
-  });
-}
-
-// ── Upload & Inspection Handling ───────────────────────────────────────
-
-function handleFile(file) {
+function handleLoadedFile(file) {
   if (!file) return;
 
-  const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/bmp'];
-  if (!allowedTypes.includes(file.type)) {
-    showToast('Unsupported file type. Use JPG, PNG, or WebP.', 'error');
+  const validTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/bmp'];
+  if (!validTypes.includes(file.type)) {
+    showToast('Unsupported file format. Please upload JPG, PNG, or WEBP.', 'error');
     return;
   }
 
   if (file.size > 10 * 1024 * 1024) {
-    showToast('File too large. Maximum size is 10 MB.', 'error');
+    showToast('File exceeds 10 MB limit.', 'error');
     return;
   }
 
@@ -128,165 +120,157 @@ function handleFile(file) {
 
   const reader = new FileReader();
   reader.onload = (e) => {
-    uploadPreview.src = e.target.result;
-    uploadPreview.style.display = 'block';
-    uploadPrompt.style.display = 'none';
-    uploadActions.style.display = 'flex';
+    samplePreviewImg.src = e.target.result;
+    sampleFilename.textContent = file.name;
+    sampleFilesize.textContent = `${(file.size / 1024).toFixed(1)} KB`;
+
+    dropzoneBox.style.display = 'none';
+    samplePreviewContainer.style.display = 'flex';
+    analyzeBtn.disabled = false;
   };
   reader.readAsDataURL(file);
 }
 
-function clearUpload() {
+function resetWorkstation() {
   selectedFile = null;
-  uploadInput.value = '';
-  uploadPreview.style.display = 'none';
-  uploadPreview.src = '';
-  uploadPrompt.style.display = 'block';
-  uploadActions.style.display = 'none';
-  resultsSection.classList.remove('active');
+  fileInput.value = '';
+  samplePreviewImg.src = '';
+  samplePreviewContainer.style.display = 'none';
+  dropzoneBox.style.display = 'flex';
+  analyzeBtn.disabled = true;
+
+  resultsActiveContainer.style.display = 'none';
+  resultsPlaceholder.style.display = 'flex';
+  inspectionIdBadge.textContent = 'ID: Standby';
 }
 
-// Drag & Drop
-if (uploadZone) {
-  uploadZone.addEventListener('dragover', (e) => {
+if (dropzoneBox) {
+  dropzoneBox.addEventListener('click', () => fileInput.click());
+
+  dropzoneBox.addEventListener('dragover', (e) => {
     e.preventDefault();
+    dropzoneBox.classList.add('drag-over');
   });
 
-  uploadZone.addEventListener('drop', (e) => {
+  dropzoneBox.addEventListener('dragleave', () => {
+    dropzoneBox.classList.remove('drag-over');
+  });
+
+  dropzoneBox.addEventListener('drop', (e) => {
     e.preventDefault();
+    dropzoneBox.classList.remove('drag-over');
     if (e.dataTransfer.files.length > 0) {
-      handleFile(e.dataTransfer.files[0]);
+      handleLoadedFile(e.dataTransfer.files[0]);
     }
-  });
-
-  uploadZone.addEventListener('click', (e) => {
-    if (e.target.closest('#upload-actions') || e.target.closest('.quick-samples')) return;
-    uploadInput.click();
   });
 }
 
-if (uploadInput) {
-  uploadInput.addEventListener('change', (e) => {
+if (fileInput) {
+  fileInput.addEventListener('change', (e) => {
     if (e.target.files.length > 0) {
-      handleFile(e.target.files[0]);
+      handleLoadedFile(e.target.files[0]);
     }
   });
 }
 
-if (clearBtn) clearBtn.addEventListener('click', clearUpload);
+if (clearBtn) {
+  clearBtn.addEventListener('click', resetWorkstation);
+}
 
-// ── Quick Demo Sample Buttons ──────────────────────────────────────────
+// ── Demo Fixture Generators ────────────────────────────────────────────
 
-document.querySelectorAll('.btn-sample').forEach(btn => {
-  btn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    const sampleType = btn.getAttribute('data-sample');
-    loadDemoSample(sampleType);
+document.querySelectorAll('.btn-demo').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const fixtureType = btn.getAttribute('data-fixture');
+    loadDemoFixture(fixtureType);
   });
 });
 
-function loadDemoSample(type) {
+function loadDemoFixture(type) {
   const canvas = document.createElement('canvas');
   canvas.width = 224;
   canvas.height = 224;
   const ctx = canvas.getContext('2d');
 
-  if (type === 'dark') {
-    ctx.fillStyle = '#1A1614';
+  if (type === 'green_clean') {
+    setInspectionMode('green');
+    ctx.fillStyle = '#1e241c';
     ctx.fillRect(0, 0, 224, 224);
-    ctx.fillStyle = '#2C2825';
+    ctx.fillStyle = '#5c7a52';
     ctx.beginPath();
-    ctx.ellipse(112, 112, 70, 95, Math.PI / 8, 0, 2 * Math.PI);
+    ctx.ellipse(112, 112, 68, 92, -0.2, 0, 2 * Math.PI);
     ctx.fill();
-    ctx.strokeStyle = '#000000';
+    ctx.strokeStyle = '#3e5636';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+  } else if (type === 'green_defect') {
+    setInspectionMode('green');
+    ctx.fillStyle = '#26231c';
+    ctx.fillRect(0, 0, 224, 224);
+    ctx.fillStyle = '#6b7858';
+    ctx.beginPath();
+    ctx.ellipse(112, 112, 70, 90, 0, 0, 2 * Math.PI);
+    ctx.fill();
+    // Parchment / Damage artifact
+    ctx.fillStyle = '#d4c79b';
+    ctx.fillRect(80, 80, 60, 50);
+  } else if (type === 'roasted_dark') {
+    setInspectionMode('roasted');
+    ctx.fillStyle = '#110f0d';
+    ctx.fillRect(0, 0, 224, 224);
+    ctx.fillStyle = '#2c1e18';
+    ctx.beginPath();
+    ctx.ellipse(112, 112, 68, 92, 0.3, 0, 2 * Math.PI);
+    ctx.fill();
+    ctx.strokeStyle = '#140c08';
     ctx.lineWidth = 4;
     ctx.beginPath();
-    ctx.moveTo(112, 35);
-    ctx.bezierCurveTo(105, 112, 120, 112, 112, 190);
+    ctx.moveTo(112, 30);
+    ctx.bezierCurveTo(105, 112, 120, 112, 112, 194);
     ctx.stroke();
-  } else if (type === 'defect') {
-    ctx.fillStyle = '#6a8f6d';
-    ctx.fillRect(0, 0, 224, 224);
-    ctx.fillStyle = '#7a9f7d';
-    ctx.beginPath();
-    ctx.ellipse(112, 112, 75, 90, 0, 0, 2 * Math.PI);
-    ctx.fill();
-    ctx.fillStyle = '#C28E46'; // Defect spot
-    ctx.fillRect(80, 80, 64, 64);
   } else {
-    ctx.fillStyle = '#8f9a88';
+    // Roasted defect
+    setInspectionMode('roasted');
+    ctx.fillStyle = '#181412';
     ctx.fillRect(0, 0, 224, 224);
-    ctx.fillStyle = '#6a8f6d';
+    ctx.fillStyle = '#422c22';
     ctx.beginPath();
-    ctx.ellipse(112, 112, 72, 92, -Math.PI / 12, 0, 2 * Math.PI);
+    ctx.ellipse(112, 112, 72, 88, 0, 0, 2 * Math.PI);
+    ctx.fill();
+    // Quaker / Scorch mark
+    ctx.fillStyle = '#c28e46';
+    ctx.beginPath();
+    ctx.ellipse(100, 100, 30, 25, 0.4, 0, 2 * Math.PI);
     ctx.fill();
   }
 
   canvas.toBlob((blob) => {
-    const file = new File([blob], `sample_${type}.jpg`, { type: 'image/jpeg' });
-    handleFile(file);
-    showToast(`Loaded demo sample: ${type.toUpperCase()}`, 'info');
+    const file = new File([blob], `fixture_${type}.jpg`, { type: 'image/jpeg' });
+    handleLoadedFile(file);
+    showToast(`Loaded test sample: ${type.replace('_', ' ').toUpperCase()}`, 'info');
   }, 'image/jpeg');
 }
 
-// ── Quality Score Algorithm (Green Beans) ──────────────────────
+// ── Spectrum Drawer Toggle ─────────────────────────────────────────────
 
-function calculateQualityScore(roastResult, defectResult) {
-  let baseScore = 95;
-
-  const defectName = defectResult?.prediction || '';
-  const defectConf = defectResult?.confidence || 0;
-
-  const primarySevere = ['Full Black', 'Full Sour', 'Fungus Damage', 'Severe Insect Damage', 'Scorched', 'Burnt'];
-  const secondaryModerate = ['Partial Black', 'Partial Sour', 'Broken', 'Cut', 'Shell', 'Floater', 'Quaker'];
-  const millingProcessing = ['Husk', 'Parchment', 'Dry Cherry', 'Immature', 'Withered', 'Fade', 'Insect Damage'];
-
-  let severityText = 'Low Risk (Clean)';
-  let verdictText = 'High Quality Clean Bean';
-  let statusFlagClass = 'status-pass';
-  let statusFlagText = '🟢 PASS — CLEAN BEAN';
-
-  if (primarySevere.includes(defectName)) {
-    baseScore -= 35 * defectConf;
-    severityText = 'Critical Risk (Primary Defect)';
-    verdictText = 'Off-Grade / Reject: Severe defect detected';
-    statusFlagClass = 'status-defect';
-    statusFlagText = '🔴 REJECT — CRITICAL DEFECT';
-  } else if (secondaryModerate.includes(defectName)) {
-    baseScore -= 20 * defectConf;
-    severityText = 'Moderate Risk (Secondary Defect)';
-    verdictText = 'Minor cup impact, secondary sort advised';
-    statusFlagClass = 'status-review';
-    statusFlagText = '🟡 REVIEW — SECONDARY DEFECT';
-  } else if (millingProcessing.includes(defectName)) {
-    baseScore -= 10 * defectConf;
-    severityText = 'Low Severity (Minor Defect)';
-    verdictText = 'Tolerable processing artifact';
-    statusFlagClass = 'status-pass';
-    statusFlagText = '🟢 PASS — MINOR DEFECT';
-  }
-
-  const finalScore = Math.max(Math.min(Math.round(baseScore), 99), 35);
-
-  return {
-    score: finalScore,
-    severity: severityText,
-    verdict: verdictText,
-    flagClass: statusFlagClass,
-    flagText: statusFlagText,
-  };
+if (spectrumToggleBtn && spectrumDrawer) {
+  spectrumToggleBtn.addEventListener('click', () => {
+    const isClosed = spectrumDrawer.style.display === 'none' || !spectrumDrawer.style.display;
+    spectrumDrawer.style.display = isClosed ? 'block' : 'none';
+    spectrumArrow.textContent = isClosed ? '▲' : '▼';
+  });
 }
 
-// ── Run AI Diagnostic ──────────────────────────────────────────
+// ── Run Inspection Execution ───────────────────────────────────────────
 
 if (analyzeBtn) {
   analyzeBtn.addEventListener('click', async () => {
     if (!selectedFile) {
-      showToast('Please load an image first.', 'error');
+      showToast('Please ingest a sample first.', 'error');
       return;
     }
 
-    setLoading(true);
+    loadingOverlay.classList.add('active');
 
     const formData = new FormData();
     formData.append('file', selectedFile);
@@ -299,301 +283,343 @@ if (analyzeBtn) {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.detail || `Server error: ${response.status}`);
+        throw new Error(errorData.detail || `Server error ${response.status}`);
       }
 
       const result = await response.json();
-      displayInspectionResults(result);
-      showToast('Quality evaluation complete!', 'success');
-      fetchHistory();
-      incrementInspectionCounter();
-    } catch (error) {
-      console.error('Inspection error:', error);
-      showToast(error.message || 'Failed to inspect bean.', 'error');
+      renderInspectionResult(result);
+      showToast('Inspection completed successfully.', 'success');
+
+      // Refresh background statistics & audit log
+      fetchHistoricalAnalytics();
+      fetchAuditLogs();
+    } catch (err) {
+      console.error('Inspection failed:', err);
+      showToast(err.message || 'Failed to inspect sample.', 'error');
     } finally {
-      setLoading(false);
+      loadingOverlay.classList.remove('active');
     }
   });
 }
 
-// ── Render Inspection Workspace ────────────────────────────────────────
+// ── Render Inspection Decision & Evidence ──────────────────────────────
 
-function displayInspectionResults(result) {
-  resultsSection.classList.add('active');
+function renderInspectionResult(result) {
+  resultsPlaceholder.style.display = 'none';
+  resultsActiveContainer.style.display = 'flex';
 
-  const randId = Math.floor(10000 + Math.random() * 90000);
-  const inspIdEl = document.getElementById('inspection-id');
-  if (inspIdEl) inspIdEl.textContent = `INSPECTION #BN-${randId}`;
+  // Generate ID
+  const randomSerial = Math.floor(100000 + Math.random() * 900000);
+  inspectionIdBadge.textContent = `ID: QA-${randomSerial}`;
 
-  const resultImg = document.getElementById('result-view-img');
-  const isGreen = result.roast?.prediction === 'Green';
+  const roast = result.roast || { prediction: 'Unknown', confidence: 0 };
+  const defect = result.defect || { prediction: 'None', confidence: 0 };
+  const isGreen = roast.prediction === 'Green';
 
-  // Toggle UI Layout based on Tier (Green vs Roasted)
-  setUITab(isGreen ? 'green' : 'roasted');
-  
-  const greenScoreCard = document.getElementById('green-score-card');
-  const roastedScoreCard = document.getElementById('roasted-score-card');
-  const spectrumContainer = document.getElementById('spectrum-container');
-  const defectLbl = document.getElementById('defect-lbl');
-  
+  // Switch active tab if model indicates discrepancy
+  if (isGreen && activeMode !== 'green') setInspectionMode('green');
+  if (!isGreen && activeMode !== 'roasted') setInspectionMode('roasted');
+
+  // Evidence View
+  if (result.roasted_defect?.annotated_image) {
+    evidenceImage.src = result.roasted_defect.annotated_image;
+    evidenceTag.textContent = 'EVIDENCE: YOLOv8 BOUNDING BOX LOCALIZER';
+  } else if (samplePreviewImg.src) {
+    evidenceImage.src = samplePreviewImg.src;
+    evidenceTag.textContent = isGreen ? 'EVIDENCE: 224px CHROMATIC RGB' : 'EVIDENCE: POST-ROAST VISUAL SCAN';
+  }
+
+  // Detection Grid Values
+  detRoastVal.textContent = `${roast.prediction} (${(roast.confidence * 100).toFixed(1)}%)`;
+  detLatencyVal.textContent = `${result.inference_time_ms || 0} ms`;
+
+  // Decision & Status Evaluation Logic
+  const primarySevereDefects = ['Full Black', 'Full Sour', 'Fungus Damage', 'Severe Insect Damage'];
+  const secondaryDefects = ['Partial Black', 'Partial Sour', 'Broken', 'Cut', 'Shell', 'Floater'];
+
   if (isGreen) {
-    greenScoreCard.style.display = 'block';
-    roastedScoreCard.style.display = 'none';
-    spectrumContainer.style.display = 'block';
-    defectLbl.textContent = 'Physical Defect';
-    
-    if (resultImg && uploadPreview.src) resultImg.src = uploadPreview.src;
-    
-    const quality = calculateQualityScore(result.roast, result.defect);
-    const scoreEl = document.getElementById('quality-score');
-    if (scoreEl) animateCounter(scoreEl, 0, quality.score, 800, Math.round);
-    
-    const verdictEl = document.getElementById('score-verdict');
-    if (verdictEl) verdictEl.textContent = quality.verdict;
-    const flagEl = document.getElementById('status-flag');
-    if (flagEl) {
-      flagEl.className = `status-flag ${quality.flagClass}`;
-      flagEl.textContent = quality.flagText;
-    }
-    
-    const severityEl = document.getElementById('defect-severity');
-    if (severityEl) severityEl.textContent = quality.severity;
-    
-    if (result.roast?.probabilities) renderBars('roast-bars', result.roast.probabilities);
-    if (result.defect?.probabilities) renderBars('defect-bars', result.defect.probabilities);
-    
-  } else {
-    // Roasted Batch (YOLO output)
-    greenScoreCard.style.display = 'none';
-    roastedScoreCard.style.display = 'block';
-    spectrumContainer.style.display = 'none';
-    defectLbl.textContent = 'Batch Defects';
-    
-    if (result.roasted_defect?.annotated_image && resultImg) {
-      resultImg.src = result.roasted_defect.annotated_image;
-    } else if (resultImg && uploadPreview.src) {
-      resultImg.src = uploadPreview.src;
-    }
+    detDefectLabel.textContent = 'Agricultural Defect';
+    detDefectVal.textContent = `${defect.prediction} (${(defect.confidence * 100).toFixed(1)}%)`;
 
-    const defectCount = result.roasted_defect?.defect_count || 0;
-    const uniformity = Math.max(100 - (defectCount * 0.8), 70); // Simulated batch penalty
-    const uniEl = document.getElementById('batch-uniformity');
-    if (uniEl) animateCounter(uniEl, 0, uniformity, 800, (v) => v.toFixed(1));
-    
-    const flagEl = document.getElementById('batch-status-flag');
-    const verdictEl = document.getElementById('batch-verdict');
-    const severityEl = document.getElementById('defect-severity');
-    
-    if (defectCount > 5) {
-      flagEl.className = 'status-flag status-defect';
-      flagEl.textContent = '🔴 REJECT — UNEVEN ROAST';
-      verdictEl.textContent = 'High variance or scorching detected.';
-      severityEl.textContent = `High Risk (${defectCount} issues)`;
-    } else if (defectCount > 0) {
-      flagEl.className = 'status-flag status-review';
-      flagEl.textContent = '🟡 REVIEW — MINOR ISSUES';
-      verdictEl.textContent = 'Acceptable variance, monitor closely.';
-      severityEl.textContent = `Moderate Risk (${defectCount} issues)`;
+    if (primarySevereDefects.includes(defect.prediction) && defect.confidence >= 0.5) {
+      statusVerdictBanner.className = 'status-verdict-banner fail';
+      verdictIcon.textContent = '✕';
+      verdictTitle.textContent = 'REJECT — CRITICAL DEFECT DETECTED';
+      verdictSubtitle.textContent = `Primary agricultural defect identified: ${defect.prediction}`;
+      verdictConfidence.textContent = `${(defect.confidence * 100).toFixed(1)}% CONF`;
+
+      detSeverityVal.textContent = 'Critical Risk (Primary Off-Grade)';
+      recTitle.textContent = 'RECOMMENDED OPERATOR ACTION: REJECT LOT';
+      recDesc.textContent = 'Sample fails clean specialty grade requirements. Isolate and reject inbound harvest lot.';
+    } else if (secondaryDefects.includes(defect.prediction) && defect.confidence >= 0.4) {
+      statusVerdictBanner.className = 'status-verdict-banner review';
+      verdictIcon.textContent = '⚠';
+      verdictTitle.textContent = 'REVIEW REQUIRED — SECONDARY DEFECT';
+      verdictSubtitle.textContent = `Secondary defect identified: ${defect.prediction}`;
+      verdictConfidence.textContent = `${(defect.confidence * 100).toFixed(1)}% CONF`;
+
+      detSeverityVal.textContent = 'Moderate Risk (Secondary Defect)';
+      recTitle.textContent = 'RECOMMENDED OPERATOR ACTION: SECONDARY SORT';
+      recDesc.textContent = 'Minor defect anomaly. Run lot through optical sorter or gravity table before roasting.';
     } else {
-      flagEl.className = 'status-flag status-pass';
-      flagEl.textContent = '🟢 PRODUCTION READY';
-      verdictEl.textContent = 'Flawless, consistent roast profile.';
-      severityEl.textContent = 'Low Risk (Clean Batch)';
+      statusVerdictBanner.className = 'status-verdict-banner pass';
+      verdictIcon.textContent = '✓';
+      verdictTitle.textContent = 'PASS — QUALITY STANDARD MET';
+      verdictSubtitle.textContent = 'Clean green coffee sample with no severe defects';
+      verdictConfidence.textContent = `${(roast.confidence * 100).toFixed(1)}% CONF`;
+
+      detSeverityVal.textContent = 'Low Risk (Clean Sample)';
+      recTitle.textContent = 'RECOMMENDED OPERATOR ACTION: ACCEPT SAMPLE';
+      recDesc.textContent = 'Sample conforms to clean green coffee grade requirements. Approved for production inventory.';
+    }
+  } else {
+    // Roasted Batch Mode
+    detDefectLabel.textContent = 'Batch Defects Found';
+    const defectCount = result.roasted_defect?.defect_count || 0;
+    detDefectVal.textContent = `${defectCount} Defect(s) Flagged`;
+
+    if (defectCount > 3) {
+      statusVerdictBanner.className = 'status-verdict-banner fail';
+      verdictIcon.textContent = '✕';
+      verdictTitle.textContent = 'REJECT — HIGH DEFECT VARIANCE';
+      verdictSubtitle.textContent = `Multiple defects detected in roasted batch (${defectCount} total)`;
+      verdictConfidence.textContent = 'YOLOv8 ACTIVE';
+
+      detSeverityVal.textContent = 'High Defect Variance';
+      recTitle.textContent = 'RECOMMENDED OPERATOR ACTION: QUARANTINE BATCH';
+      recDesc.textContent = 'Excessive scorching or quakers detected. Check burner temperature and drum rotation speed.';
+    } else if (defectCount > 0) {
+      statusVerdictBanner.className = 'status-verdict-banner review';
+      verdictIcon.textContent = '⚠';
+      verdictTitle.textContent = 'REVIEW REQUIRED — MINOR DEFECTS';
+      verdictSubtitle.textContent = `Isolated defects detected (${defectCount} total)`;
+      verdictConfidence.textContent = 'YOLOv8 ACTIVE';
+
+      detSeverityVal.textContent = 'Minor Defect Variance';
+      recTitle.textContent = 'RECOMMENDED OPERATOR ACTION: MANUAL QUALITY CHECK';
+      recDesc.textContent = 'Slight thermal or bean variance. Perform cup tasting verification before packaging.';
+    } else {
+      statusVerdictBanner.className = 'status-verdict-banner pass';
+      verdictIcon.textContent = '✓';
+      verdictTitle.textContent = 'PASS — PRODUCTION ROAST UNIFORM';
+      verdictSubtitle.textContent = `Flawless roast profile: ${roast.prediction}`;
+      verdictConfidence.textContent = `${(roast.confidence * 100).toFixed(1)}% CONF`;
+
+      detSeverityVal.textContent = 'Nominal (Uniform Batch)';
+      recTitle.textContent = 'RECOMMENDED OPERATOR ACTION: APPROVE FOR PACKAGING';
+      recDesc.textContent = 'Roast profile is consistent and defect-free. Commit batch to packaging line.';
     }
   }
 
-  // Common Attributes
-  const roastBadge = document.getElementById('roast-badge');
-  if (roastBadge && result.roast) {
-    roastBadge.textContent = `${result.roast.prediction} Roast (${(result.roast.confidence * 100).toFixed(1)}%)`;
-  }
-
-  const defectBadge = document.getElementById('defect-badge');
-  if (defectBadge && result.defect) {
-    defectBadge.textContent = `${result.defect.prediction}`;
-  }
-
-  resultsSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  // Render Full Probability Spectrum
+  renderProbabilitySpectrum(result);
 }
 
-function renderBars(containerId, probabilities) {
-  const container = document.getElementById(containerId);
-  if (!container) return;
-  container.innerHTML = '';
+function renderProbabilitySpectrum(result) {
+  spectrumBarsList.innerHTML = '';
 
-  const sorted = Object.entries(probabilities).sort(([, a], [, b]) => b - a);
+  const probs = (result.defect && result.defect.probabilities)
+    ? result.defect.probabilities
+    : (result.roast && result.roast.probabilities)
+    ? result.roast.probabilities
+    : {};
 
-  sorted.forEach(([label, prob], index) => {
-    const isTop = index === 0;
+  const entries = Object.entries(probs).sort(([, a], [, b]) => b - a);
+
+  if (entries.length === 0) {
+    spectrumBarsList.innerHTML = '<div style="color:var(--text-muted);font-size:0.75rem;padding:8px;">No probability distribution available.</div>';
+    return;
+  }
+
+  entries.forEach(([label, prob], index) => {
+    const pct = (prob * 100).toFixed(1);
     const row = document.createElement('div');
-    row.className = 'prob-bar-row';
-
+    row.className = 'spectrum-row';
     row.innerHTML = `
-      <div class="prob-label" title="${label}">${label}</div>
-      <div class="prob-track">
-        <div class="prob-fill ${isTop ? 'top-prediction' : ''}" style="width: 0%"></div>
+      <span class="spectrum-row-label" title="${label}">${label}</span>
+      <div class="spectrum-track">
+        <div class="spectrum-fill" style="width: ${Math.max(prob * 100, 1)}%; ${index === 0 ? 'background:var(--accent);' : 'background:var(--text-muted);'}"></div>
       </div>
-      <div class="prob-value">
-        ${(prob * 100).toFixed(1)}%
-      </div>
+      <span class="spectrum-row-val">${pct}%</span>
     `;
-
-    container.appendChild(row);
-    requestAnimationFrame(() => {
-      setTimeout(() => {
-        const fill = row.querySelector('.prob-fill');
-        if (fill) fill.style.width = `${Math.max(prob * 100, 0.5)}%`;
-      }, index * 30);
-    });
+    spectrumBarsList.appendChild(row);
   });
 }
 
-function animateCounter(element, from, to, duration, formatter) {
-  const start = performance.now();
-  function update(now) {
-    const elapsed = now - start;
-    const progress = Math.min(elapsed / duration, 1);
-    const eased = 1 - Math.pow(1 - progress, 3);
-    const current = from + (to - from) * eased;
-    element.textContent = formatter(current);
-    if (progress < 1) requestAnimationFrame(update);
-  }
-  requestAnimationFrame(update);
-}
+// ── Historical Operational Analytics (Real Backend Data) ──────────────
 
-function incrementInspectionCounter() {
-  if (!inspectedCounter) return;
-  const current = parseInt(inspectedCounter.textContent.replace(/,/g, ''), 10) || 1284;
-  inspectedCounter.textContent = (current + 1).toLocaleString();
-}
-
-// ── Operational History ──────────────────────────────────
-
-async function fetchHistory() {
+async function fetchHistoricalAnalytics() {
   try {
-    const response = await fetch('/api/history?limit=30');
-    if (!response.ok) return;
-    const data = await response.json();
-    rawHistoryData = data.predictions || [];
-    renderFilteredHistory();
-  } catch {
-    // Non-blocking
+    const res = await fetch('/api/stats');
+    if (!res.ok) return;
+    statsData = await res.json();
+
+    // 1. Total count
+    statTotalCount.textContent = (statsData.total_predictions || 0).toLocaleString();
+
+    // 2. Avg latency
+    statAvgLatency.textContent = `${statsData.avg_inference_time_ms || 0} ms`;
+
+    // 3. Defect rate
+    const total = statsData.total_predictions || 0;
+    const defectCounts = statsData.predictions_by_type?.defect || 0;
+    const rate = total > 0 ? ((defectCounts / total) * 100).toFixed(1) : '0.0';
+    statDefectRate.textContent = `${rate}%`;
+
+    // 4. Render real distribution bars
+    renderDistributionBars(statsData.top_predicted_classes || {});
+  } catch (e) {
+    console.warn('Analytics fetch skipped:', e);
   }
 }
 
-document.querySelectorAll('.filter-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    activeFilter = btn.getAttribute('data-filter');
-    renderFilteredHistory();
-  });
-});
+function renderDistributionBars(topClasses) {
+  const entries = Object.entries(topClasses).sort(([, a], [, b]) => b - a);
 
-function renderFilteredHistory() {
-  if (!historyList) return;
-  if (!rawHistoryData || rawHistoryData.length === 0) {
-    historyList.innerHTML = '<div class="history-empty">No inspections logged yet.</div>';
+  if (entries.length === 0) {
+    analyticsDistBars.innerHTML = '<div style="color:var(--text-muted);font-size:0.8rem;text-align:center;padding:16px;">No prediction records recorded yet. Run evaluations to populate operational distribution.</div>';
     return;
   }
 
-  let filtered = rawHistoryData;
-  if (activeFilter === 'pass') {
-    filtered = rawHistoryData.filter(p => p.confidence < 0.4 || p.predicted_class === 'Dark' || p.predicted_class === 'Medium' || p.predicted_class === 'Light');
-  } else if (activeFilter === 'review') {
-    filtered = rawHistoryData.filter(p => p.confidence >= 0.4 && p.confidence < 0.7);
-  } else if (activeFilter === 'defect') {
-    filtered = rawHistoryData.filter(p => p.confidence >= 0.7 && p.analysis_type === 'defect');
-  }
+  const maxVal = Math.max(...entries.map(([, count]) => count), 1);
 
-  if (filtered.length === 0) {
-    historyList.innerHTML = `<div class="history-empty">No records matching filter.</div>`;
-    return;
-  }
-
-  const grouped = new Map();
-  filtered.forEach(p => {
-    const key = p.filename || p.id;
-    if (!grouped.has(key)) grouped.set(key, []);
-    grouped.get(key).push(p);
-  });
-
-  historyList.innerHTML = Array.from(grouped.values()).map(records => {
-    const main = records[0];
-    const secondary = records[1] || null;
-
-    const timeStr = main.timestamp
-      ? new Date(main.timestamp).toLocaleString(undefined, {
-          month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
-        })
-      : 'Just now';
-
-    const isHighRisk = main.confidence >= 0.7 && main.analysis_type === 'defect';
-    const isModerate = main.confidence >= 0.4 && main.confidence < 0.7;
-    const isGreen = main.predicted_class === 'Green' || main.analysis_type === 'defect' && main.predicted_class !== 'Dark' && main.predicted_class !== 'Medium' && main.predicted_class !== 'Light';
-
-    const statusPillHtml = isHighRisk
-      ? `<span class="history-status-pill status-defect">DEFECT</span>`
-      : isModerate
-      ? `<span class="history-status-pill status-review">REVIEW</span>`
-      : `<span class="history-status-pill status-pass">PASS</span>`;
-
-    const tierBadgeHtml = isGreen 
-      ? `<span class="tag-tier tag-green">INBOUND - GREEN</span>`
-      : `<span class="tag-tier tag-roasted">PRODUCTION - ROASTED</span>`;
-
-    const details = `${main.analysis_type}: ${main.predicted_class}` +
-      (secondary ? ` · ${secondary.analysis_type}: ${secondary.predicted_class}` : '');
-
-    const thumbHtml = main.image_url
-      ? `<img class="history-thumb" src="${main.image_url}" alt="Sample" loading="lazy" />`
-      : `<div class="history-thumb" style="background:var(--bg-surface);display:flex;align-items:center;justify-content:center;font-size:20px;">📷</div>`;
-
+  analyticsDistBars.innerHTML = entries.map(([className, count]) => {
+    const pct = Math.round((count / maxVal) * 100);
     return `
-      <div class="history-item">
-        ${thumbHtml}
-        <div class="history-info">
-          <div class="history-class">${main.predicted_class}</div>
-          <div class="history-type">${details}</div>
+      <div class="chart-row">
+        <span class="chart-row-label">${className}</span>
+        <div class="chart-track">
+          <div class="chart-fill" style="width: ${pct}%;"></div>
         </div>
-        ${tierBadgeHtml}
-        ${statusPillHtml}
-        <div class="history-confidence">${(main.confidence * 100).toFixed(1)}%</div>
-        <div class="history-time">${timeStr}</div>
+        <span class="chart-row-stat">${count} sample(s)</span>
       </div>
     `;
   }).join('');
 }
 
-// ── Health Check ───────────────────────────────────────────────
+// ── Quality Audit Log Table (Real Supabase Records) ────────────────────
 
-async function checkHealth() {
+async function fetchAuditLogs() {
   try {
-    const response = await fetch('/health');
-    if (!response.ok) throw new Error();
-    const data = await response.json();
-
-    const allLoaded = data.models?.roast && data.models?.defect;
-    const someLoaded = data.models?.roast || data.models?.defect;
-
-    healthDot.className = 'status-indicator ' + (
-      allLoaded ? 'healthy' : someLoaded ? 'degraded' : 'unhealthy'
-    );
-    healthDot.title = allLoaded ? 'All models loaded' : someLoaded ? 'Some models loaded' : 'No models loaded';
-
-    if (statusText) {
-      statusText.textContent = allLoaded ? 'System Online' : someLoaded ? 'Degraded' : 'Offline';
-    }
-  } catch {
-    healthDot.className = 'status-indicator unhealthy';
-    if (statusText) statusText.textContent = 'API Unreachable';
+    const res = await fetch('/api/history?limit=30');
+    if (!res.ok) return;
+    const data = await res.json();
+    rawHistoryData = data.predictions || [];
+    renderAuditTable();
+  } catch (e) {
+    console.warn('Audit fetch skipped:', e);
   }
 }
 
-// ── Init ───────────────────────────────────────────────────────────────
+document.querySelectorAll('.audit-filter-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.audit-filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    activeFilter = btn.getAttribute('data-filter');
+    renderAuditTable();
+  });
+});
+
+function renderAuditTable() {
+  if (!auditTableBody) return;
+
+  if (!rawHistoryData || rawHistoryData.length === 0) {
+    auditTableBody.innerHTML = `
+      <tr>
+        <td colspan="7" class="audit-empty-state">No evaluations recorded in database yet. Run an inspection to start the audit trail.</td>
+      </tr>
+    `;
+    return;
+  }
+
+  // Filter
+  let filtered = rawHistoryData;
+  if (activeFilter === 'pass') {
+    filtered = rawHistoryData.filter(r => r.confidence < 0.4 || ['Dark', 'Medium', 'Light', 'Green'].includes(r.predicted_class));
+  } else if (activeFilter === 'review') {
+    filtered = rawHistoryData.filter(r => r.confidence >= 0.4 && r.confidence < 0.7);
+  } else if (activeFilter === 'defect') {
+    filtered = rawHistoryData.filter(r => r.confidence >= 0.7 && r.analysis_type === 'defect');
+  }
+
+  if (filtered.length === 0) {
+    auditTableBody.innerHTML = `
+      <tr>
+        <td colspan="7" class="audit-empty-state">No evaluations matching filter "${activeFilter.toUpperCase()}".</td>
+      </tr>
+    `;
+    return;
+  }
+
+  // Group or render individual rows
+  auditTableBody.innerHTML = filtered.map(row => {
+    const isDefect = row.analysis_type === 'defect' && row.confidence >= 0.6;
+    const isReview = row.confidence >= 0.4 && row.confidence < 0.6;
+
+    const decisionBadge = isDefect
+      ? `<span class="badge-tag defect">DEFECT</span>`
+      : isReview
+      ? `<span class="badge-tag review">REVIEW</span>`
+      : `<span class="badge-tag pass">PASS</span>`;
+
+    const modeBadge = row.analysis_type === 'defect'
+      ? `<span class="badge-tag green-mode">GREEN LOT</span>`
+      : `<span class="badge-tag roasted-mode">ROASTED</span>`;
+
+    const timeStr = row.timestamp
+      ? new Date(row.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+      : 'Recent';
+
+    const thumbHtml = row.image_url
+      ? `<img class="audit-thumb-img" src="${row.image_url}" alt="Thumb" loading="lazy" />`
+      : `<div class="audit-thumb-placeholder">📷</div>`;
+
+    return `
+      <tr>
+        <td class="audit-thumb-cell">${thumbHtml}</td>
+        <td style="font-family:var(--font-mono);font-size:0.75rem;color:var(--text-primary);">${row.filename || 'sample.jpg'}</td>
+        <td>${modeBadge}</td>
+        <td style="font-weight:600;color:var(--text-primary);">${row.predicted_class}</td>
+        <td style="font-family:var(--font-mono);">${(row.confidence * 100).toFixed(1)}%</td>
+        <td>${decisionBadge}</td>
+        <td style="font-family:var(--font-mono);font-size:0.72rem;color:var(--text-muted);">${timeStr}</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+// ── Live Health Status Check ───────────────────────────────────────────
+
+async function checkSystemHealth() {
+  try {
+    const res = await fetch('/health');
+    if (!res.ok) throw new Error();
+    const data = await res.json();
+
+    const allOnline = data.models?.roast && data.models?.defect;
+    const partial = data.models?.roast || data.models?.defect;
+
+    if (allOnline) {
+      healthDot.className = 'status-dot operational';
+      healthStatusText.textContent = 'System Operational';
+    } else if (partial) {
+      healthDot.className = 'status-dot degraded';
+      healthStatusText.textContent = 'Degraded Telemetry';
+    } else {
+      healthDot.className = 'status-dot offline';
+      healthStatusText.textContent = 'Models Offline';
+    }
+  } catch {
+    healthDot.className = 'status-dot offline';
+    healthStatusText.textContent = 'Service Unreachable';
+  }
+}
+
+// ── Initialization ─────────────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', () => {
-  checkHealth();
-  fetchHistory();
-  setInterval(checkHealth, 30000);
+  checkSystemHealth();
+  fetchHistoricalAnalytics();
+  fetchAuditLogs();
+  setInterval(checkSystemHealth, 30000);
 });
