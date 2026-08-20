@@ -34,7 +34,7 @@ venv/
 data/
 checkpoints/*.pt
 checkpoints/best_model.pt
-!checkpoints/*.onnx
+
 
 # SQLite
 *.db

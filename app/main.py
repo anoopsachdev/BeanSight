@@ -49,7 +49,14 @@ defect_predictor: Optional[ONNXPredictor] = None
 
 # ── Rate limiter ────────────────────────────────────────────────────────
 settings = get_settings()
-limiter = Limiter(key_func=get_remote_address, default_limits=[])
+def get_real_ip(request: Request) -> str:
+    """Extract real client IP from X-Forwarded-For header (useful behind Cloud Run Load Balancer)."""
+    forwarded_for = request.headers.get("x-forwarded-for")
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip()
+    return request.client.host if request.client else "127.0.0.1"
+
+limiter = Limiter(key_func=get_real_ip, default_limits=[])
 
 
 # ── Lifespan ────────────────────────────────────────────────────────────

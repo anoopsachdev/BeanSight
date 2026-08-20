@@ -107,3 +107,8 @@ jobs:
             --concurrency 20
             --allow-unauthenticated
             --set-env-vars "ENVIRONMENT=production"
+          env_vars: |-
+            DATABASE_URL=${{ secrets.DATABASE_URL }}
+            SUPABASE_URL=${{ secrets.SUPABASE_URL }}
+            SUPABASE_SERVICE_KEY=${{ secrets.SUPABASE_SERVICE_KEY }}
+            SUPABASE_BUCKET=${{ secrets.SUPABASE_BUCKET }}
