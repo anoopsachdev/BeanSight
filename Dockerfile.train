@@ -1,0 +1,19 @@
+# ================================================================
+# Coffee Bean Analyzer — Training Dockerfile
+# Full PyTorch + timm stack for model training & ONNX export
+# ================================================================
+
+FROM pytorch/pytorch:2.3.1-cuda12.1-cudnn8-runtime
+
+WORKDIR /app
+
+# Install training dependencies
+COPY requirements-train.txt .
+RUN pip install --no-cache-dir -r requirements-train.txt
+
+# Copy all source code
+COPY model/ ./model/
+COPY data/ ./data/
+
+# Default: train both models
+CMD ["python", "-m", "model.train", "--task", "both"]

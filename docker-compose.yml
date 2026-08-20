@@ -1,0 +1,31 @@
+# ================================================================
+# Coffee Bean Analyzer — Local Development
+# ================================================================
+
+services:
+  # Production-like web server (ONNX inference)
+  app:
+    build: .
+    ports:
+      - "8080:8080"
+    env_file: .env
+    environment:
+      - ENVIRONMENT=development
+      - PORT=8080
+    volumes:
+      - ./checkpoints:/app/checkpoints:ro
+    restart: unless-stopped
+
+  # Training container (only runs when explicitly requested)
+  train:
+    build:
+      context: .
+      dockerfile: Dockerfile.train
+    volumes:
+      - ./data:/app/data
+      - ./checkpoints:/app/checkpoints
+    environment:
+      - KAGGLE_USERNAME=${KAGGLE_USERNAME}
+      - KAGGLE_KEY=${KAGGLE_KEY}
+    profiles:
+      - training

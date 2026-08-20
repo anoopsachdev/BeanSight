@@ -1,0 +1,14 @@
+data/
+__pycache__/
+*.pyc
+.env
+.git/
+.github/
+tests/
+Dockerfile.train
+requirements-train.txt
+checkpoints/*.pt
+*.md
+.gitignore
+.venv/
+venv/

@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="AI-powered coffee bean analyzer. Classify roast levels and detect physical defects with deep learning." />
+  <title>Coffee Bean Analyzer — AI Roast &amp; Defect Detection</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>☕</text></svg>" />
+</head>
+<body>
+
+  <!-- Loading Overlay -->
+  <div class="loading-overlay" id="loading-overlay">
+    <div class="loading-spinner">
+      <div class="spinner-ring"></div>
+      <div class="loading-text">Analyzing your coffee beans...</div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div class="toast-container" id="toast-container"></div>
+
+  <div class="app-container">
+
+    <!-- ─── Header ───────────────────────────────────────────── -->
+    <header class="app-header">
+      <div class="app-logo">
+        <div class="app-logo-icon">☕</div>
+        <div>
+          <h1 class="app-title">Coffee Bean Analyzer</h1>
+          <p class="app-subtitle">
+            AI-Powered Roast Classification &amp; Defect Detection
+            <span class="health-dot" id="health-dot" title="API status"></span>
+          </p>
+        </div>
+      </div>
+    </header>
+
+    <!-- ─── Upload Section ───────────────────────────────────── -->
+    <section class="glass-card" id="upload-card">
+      <div class="card-title">
+        <span class="icon">📷</span>
+        Upload Coffee Bean Image
+      </div>
+
+      <div class="upload-zone" id="upload-zone">
+        <div id="upload-prompt">
+          <div class="upload-icon">📤</div>
+          <div class="upload-text">
+            <strong>Drag &amp; drop</strong> your coffee bean image here<br />
+            or click to browse files
+            <div class="hint">Supports JPG, PNG, WebP — max 10 MB</div>
+          </div>
+        </div>
+        <img class="upload-preview" id="upload-preview" style="display: none;" alt="Preview" />
+        <input type="file" class="upload-input" id="upload-input"
+               accept="image/jpeg,image/png,image/webp,image/bmp" />
+      </div>
+
+      <div class="upload-actions" id="upload-actions" style="display: none;">
+        <button class="btn btn-primary" id="analyze-btn" type="button">
+          🔬 Analyze Beans
+        </button>
+        <button class="btn btn-secondary" id="clear-btn" type="button">
+          ✕ Clear
+        </button>
+      </div>
+    </section>
+
+    <!-- ─── Results Section ──────────────────────────────────── -->
+    <section class="results-section" id="results-section">
+
+      <div class="results-grid">
+
+        <!-- Roast Classification Panel -->
+        <div class="glass-card" id="roast-panel">
+          <div class="card-title">
+            <span class="icon">🔥</span>
+            Roast Level
+          </div>
+
+          <div class="prediction-header">
+            <div class="prediction-badge" id="roast-badge">—</div>
+            <div style="text-align: right;">
+              <div class="confidence-value" id="roast-confidence">—</div>
+              <div class="confidence-label">Confidence</div>
+            </div>
+          </div>
+
+          <div class="prob-bars" id="roast-bars">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+
+        <!-- Defect Detection Panel -->
+        <div class="glass-card" id="defect-panel">
+          <div class="card-title">
+            <span class="icon">🔍</span>
+            Defect Detection
+          </div>
+
+          <div class="prediction-header">
+            <div class="prediction-badge" id="defect-badge">—</div>
+            <div style="text-align: right;">
+              <div class="confidence-value" id="defect-confidence">—</div>
+              <div class="confidence-label">Confidence</div>
+            </div>
+          </div>
+
+          <div class="prob-bars-scroll">
+            <div class="prob-bars" id="defect-bars">
+              <!-- Populated by JS -->
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Inference Stats -->
+      <div class="inference-stats" id="inference-stats">
+        <div class="stat-item">
+          ⚡ Inference Time: <span class="value" id="stat-time">—</span>
+        </div>
+        <div class="stat-item">
+          📐 Model: <span class="value">EfficientNetB0 (ONNX)</span>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ─── History Panel ────────────────────────────────────── -->
+    <section class="history-section glass-card" id="history-section">
+      <div class="card-title">
+        <span class="icon">📋</span>
+        Recent Analyses
+      </div>
+      <div class="history-list" id="history-list">
+        <div class="history-empty">No analyses yet. Upload an image to get started.</div>
+      </div>
+    </section>
+
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

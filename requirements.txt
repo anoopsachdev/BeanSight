@@ -1,0 +1,26 @@
+# ── Production Dependencies (Lightweight, ONNX-only) ────────────────
+# No torch, no timm, no scikit-learn — keeps Docker image ~300MB
+
+onnxruntime==1.18.1
+fastapi==0.111.0
+uvicorn[standard]==0.30.1
+python-multipart==0.0.9
+
+# Database (Async PostgreSQL)
+sqlalchemy[asyncio]==2.0.31
+asyncpg==0.29.0
+aiosqlite==0.20.0
+
+# Cloud Storage
+supabase==2.5.1
+
+# Configuration
+pydantic-settings==2.3.4
+python-dotenv==1.0.1
+
+# Security
+slowapi==0.1.9
+
+# Image processing (lightweight)
+Pillow==10.3.0
+numpy==1.26.4
