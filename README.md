@@ -1,4 +1,4 @@
-# ☕ Coffee Bean Analyzer
+# ☕ BeanSight - Coffee Bean Analyzer
 
 **AI-powered coffee bean classification and defect detection** using dual EfficientNetB0 models with ONNX-optimized inference, served via FastAPI on Google Cloud Run.
 
