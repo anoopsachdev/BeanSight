@@ -35,8 +35,16 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
 from app.config import get_settings
-from app.database import close_db, get_history, get_stats, init_db, log_prediction
-from app.storage import init_storage, upload_image
+from app.database import (
+    DatabaseUnavailable,
+    close_db,
+    db_status,
+    get_history,
+    get_stats,
+    init_db,
+    log_prediction,
+)
+from app.storage import init_storage, storage_status, upload_image
 from model.predict import ONNXPredictor, YOLOv8ONNXPredictor
 
 # ── Class definitions (duplicated here to avoid importing torch) ────────
@@ -79,8 +87,13 @@ async def lifespan(app: FastAPI):
     # Initialize database and storage in the background to avoid blocking Uvicorn startup
     # (Cloud Run requires the port to be bound quickly for health checks)
     print("  📊 Scheduling database and storage initialization...")
-    asyncio.create_task(init_db())
-    asyncio.create_task(init_storage())
+
+    async def _init_services():
+        # Both helpers swallow their own errors and record them for /health,
+        # so a paused/unreachable Supabase project never crashes startup.
+        await asyncio.gather(init_db(), init_storage())
+
+    asyncio.create_task(_init_services())
 
     async def load_models():
         global roast_predictor, defect_predictor, roasted_yolo_predictor
@@ -181,7 +194,7 @@ async def serve_frontend():
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint for Cloud Run."""
+    """Health check endpoint for Cloud Run (and for the UI status pill)."""
     return {
         "status": "healthy",
         "models": {
@@ -189,6 +202,8 @@ async def health_check():
             "defect": defect_predictor is not None and defect_predictor.is_loaded(),
             "roasted_yolo": roasted_yolo_predictor is not None and roasted_yolo_predictor.is_loaded(),
         },
+        "database": db_status(),
+        "storage": storage_status(),
     }
 
 
@@ -337,14 +352,31 @@ async def predict(request: Request, file: UploadFile = File(...)):
 
 @app.get("/api/history")
 async def history(limit: int = 20, offset: int = 0):
-    """Get recent prediction history."""
-    if limit > 100:
-        limit = 100
-    records = await get_history(limit=limit, offset=offset)
-    return {"predictions": records, "count": len(records)}
+    """Get recent prediction history (empty list + flag if the DB is unreachable)."""
+    limit = max(1, min(limit, 100))
+    try:
+        records = await get_history(limit=limit, offset=offset)
+    except DatabaseUnavailable as exc:
+        return {"predictions": [], "count": 0, "database_available": False, "error": str(exc)}
+    return {"predictions": records, "count": len(records), "database_available": True}
 
 
 @app.get("/api/stats")
 async def stats():
-    """Get aggregate prediction statistics."""
-    return await get_stats()
+    """Get aggregate prediction statistics (zeros + flag if the DB is unreachable)."""
+    try:
+        data = await get_stats()
+    except DatabaseUnavailable as exc:
+        return {
+            "total_predictions": 0,
+            "total_samples": 0,
+            "avg_inference_time_ms": 0,
+            "predictions_by_type": {},
+            "top_predicted_classes": {},
+            "roast_distribution": {},
+            "defect_distribution": {},
+            "database_available": False,
+            "error": str(exc),
+        }
+    data["database_available"] = True
+    return data

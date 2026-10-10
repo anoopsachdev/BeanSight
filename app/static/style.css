@@ -291,6 +291,13 @@ button { font: inherit; color: inherit; }
 
 .footnote { margin-top: 18px; font-size: 0.8rem; color: var(--text-3); max-width: 820px; }
 
+.notice {
+  display: flex; gap: 10px; align-items: flex-start; font-size: 0.86rem; color: var(--text-2);
+  background: var(--amber-soft); border: 1px solid rgba(183, 121, 31, 0.25); border-radius: var(--r-md);
+  padding: 10px 14px; margin-bottom: 16px;
+}
+.notice svg { color: var(--amber); font-size: 16px; margin-top: 2px; }
+
 /* KPIs & activity */
 .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 20px; }
 .kpi { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 14px 18px; display: flex; flex-direction: column; gap: 4px; box-shadow: var(--shadow-sm); }
