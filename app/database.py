@@ -44,7 +44,7 @@ class Prediction(Base):
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     timestamp = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     filename = Column(String(255), nullable=True)
-    analysis_type = Column(String(20), nullable=False)  # "roast" or "defect"
+    analysis_type = Column(String(20), nullable=False)  # "roast" | "defect" (green) | "roasted_defect"
     predicted_class = Column(String(100), nullable=False)
     confidence = Column(Float, nullable=False)
     probabilities_json = Column(JSON, nullable=True)
@@ -219,9 +219,31 @@ async def get_stats() -> dict:
         )
         top_classes = {row[0]: row[1] for row in class_result.all()}
 
+        # Roast-level distribution (one "roast" row is logged per analysed image)
+        roast_result = await session.execute(
+            select(Prediction.predicted_class, func.count(Prediction.id))
+            .where(Prediction.analysis_type == "roast")
+            .group_by(Prediction.predicted_class)
+        )
+        roast_distribution = {row[0]: row[1] for row in roast_result.all()}
+
+        # Defect distribution across both defect models, excluding "clean" outcomes
+        defect_result = await session.execute(
+            select(Prediction.predicted_class, func.count(Prediction.id))
+            .where(Prediction.analysis_type.in_(["defect", "roasted_defect"]))
+            .where(Prediction.predicted_class.notin_(["Normal", "No Defect", "None (Clean)"]))
+            .group_by(Prediction.predicted_class)
+            .order_by(func.count(Prediction.id).desc())
+            .limit(10)
+        )
+        defect_distribution = {row[0]: row[1] for row in defect_result.all()}
+
         return {
             "total_predictions": total,
+            "total_samples": by_type.get("roast", 0),
             "avg_inference_time_ms": round(avg_time, 2) if avg_time else 0,
             "predictions_by_type": by_type,
             "top_predicted_classes": top_classes,
+            "roast_distribution": roast_distribution,
+            "defect_distribution": defect_distribution,
         }

@@ -1,8 +1,13 @@
 """
 FastAPI application for Coffee Bean Analyzer.
 
+Pipeline:
+  Stage 1  Roast classifier (EfficientNet-B0, 4 classes) — decides the route
+  Stage 2a Green bean  → 17-class defect classifier (EfficientNet-B0, single bean)
+  Stage 2b Roasted bean → YOLOv8n defect detector (Broken / Quaker / Scorched / Normal)
+
 Endpoints:
-  POST /api/predict  — Upload image → dual ONNX inference (roast + defect)
+  POST /api/predict  — Upload image → tiered ONNX inference (roast + defect)
   GET  /api/history  — Recent prediction history
   GET  /api/stats    — Aggregate statistics
   GET  /health       — Health check
@@ -29,7 +34,6 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
-from app.config import get_settings
 from app.config import get_settings
 from app.database import close_db, get_history, get_stats, init_db, log_prediction
 from app.storage import init_storage, upload_image
@@ -128,9 +132,9 @@ async def lifespan(app: FastAPI):
 
 # ── App ─────────────────────────────────────────────────────────────────
 app = FastAPI(
-    title="Coffee Bean Analyzer API",
-    description="Classify coffee beans by roast level and detect physical defects",
-    version="2.0.0",
+    title="BeanSight API",
+    description="Classify coffee beans by roast level, then detect defects with the matching green or roasted model",
+    version="2.1.0",
     lifespan=lifespan,
     docs_url="/docs" if settings.ENVIRONMENT == "development" else None,
     redoc_url="/redoc" if settings.ENVIRONMENT == "development" else None,
@@ -231,7 +235,7 @@ async def predict(request: Request, file: UploadFile = File(...)):
     start_time = time.perf_counter()
     result = {}
 
-    # Stage 1: Roast Level Router
+    # Stage 1: roast-level classifier (also decides which Stage 2 model runs)
     roast_prediction = "Medium"
     if roast_predictor is not None:
         roast_result = roast_predictor.predict(image)
@@ -242,9 +246,10 @@ async def predict(request: Request, file: UploadFile = File(...)):
             "probabilities": roast_result["probabilities"],
         }
 
-    # Stage 2: Context-Aware Defect Audit
+    # Stage 2: defect analysis, chosen by the Stage 1 result
     if roast_prediction == "Green" or roasted_yolo_predictor is None:
-        # Green bean SCA agricultural inspection (EfficientNet 17-class)
+        # Unroasted (green) bean → 17-class defect classifier (single bean)
+        result["route"] = "green"
         if defect_predictor is not None:
             defect_result = defect_predictor.predict(image)
             result["defect"] = {
@@ -254,22 +259,41 @@ async def predict(request: Request, file: UploadFile = File(...)):
                 "probabilities": defect_result["probabilities"],
             }
     else:
-        # Roasted bean batch mechanical inspection (YOLOv8 bounding boxes)
+        # Roasted bean → YOLOv8 detector (one or many beans, per-bean boxes)
+        result["route"] = "roasted"
         yolo_result = roasted_yolo_predictor.predict(image)
+        bean_count = yolo_result.get("bean_count", len(yolo_result.get("detections", [])))
+        defect_summary = yolo_result["defect_summary"]
         result["roasted_defect"] = {
             "type": "roasted_mechanical",
+            "bean_count": bean_count,
+            "normal_count": yolo_result.get("normal_count", 0),
             "defect_count": yolo_result["defect_count"],
-            "defect_summary": yolo_result["defect_summary"],
+            "defect_summary": defect_summary,
+            "class_summary": yolo_result.get("class_summary", defect_summary),
+            "mean_confidence": yolo_result.get("mean_confidence", 0.0),
             "detections": yolo_result["detections"],
             "annotated_image": yolo_result["annotated_image"],
         }
-        # Maintain backward compatibility with existing "defect" key for frontend/tests
-        top_defect = max(yolo_result["defect_summary"].items(), key=lambda x: x[1])[0] if yolo_result["defect_summary"] else "None (Clean)"
+        # Compact summary of the detector output (also used for the audit log).
+        # Confidence is the mean detector score of the defect boxes (or of all
+        # boxes when no defects were found) — never a made-up constant.
+        if defect_summary:
+            top_defect = max(defect_summary.items(), key=lambda x: x[1])[0]
+            confidence = yolo_result.get("mean_defect_confidence", yolo_result.get("mean_confidence", 0.0))
+        else:
+            top_defect = "No Defect"
+            confidence = yolo_result.get("mean_confidence", 0.0)
+        class_summary = yolo_result.get("class_summary", defect_summary)
         result["defect"] = {
             "type": "roasted_mechanical",
             "prediction": top_defect,
-            "confidence": 0.95 if yolo_result["defect_count"] > 0 else 0.99,
-            "probabilities": {cls: round(yolo_result["defect_summary"].get(cls, 0) / max(yolo_result["defect_count"], 1), 2) for cls in ROASTED_DEFECT_CLASSES},
+            "confidence": confidence,
+            # Share of detected beans per class (not softmax probabilities).
+            "probabilities": {
+                cls: round(class_summary.get(cls, 0) / max(bean_count, 1), 4)
+                for cls in ROASTED_DEFECT_CLASSES
+            },
         }
 
     total_time_ms = round((time.perf_counter() - start_time) * 1000, 2)
@@ -298,7 +322,7 @@ async def predict(request: Request, file: UploadFile = File(...)):
         if "defect" in result:
             await log_prediction(
                 filename=file.filename,
-                analysis_type="defect",
+                analysis_type="roasted_defect" if result.get("route") == "roasted" else "defect",
                 predicted_class=result["defect"]["prediction"],
                 confidence=result["defect"]["confidence"],
                 probabilities=result["defect"]["probabilities"],
