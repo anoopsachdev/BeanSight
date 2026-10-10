@@ -80,9 +80,14 @@ from sqlalchemy.pool import NullPool
 def _get_connect_args(url: str) -> dict:
     """Get driver-specific connection arguments."""
     if "asyncpg" in url:
-        # Supabase PgBouncer pooler (port 6543) requires disabling statement caches
+        # Supabase's transaction-mode PgBouncer can reuse a server connection
+        # whose prepared-statement names collide with another client. Disable
+        # both asyncpg caches and generate globally unique names (the pattern
+        # recommended by SQLAlchemy for PgBouncer).
         return {
             "statement_cache_size": 0,
+            "prepared_statement_cache_size": 0,
+            "prepared_statement_name_func": lambda: f"__asyncpg_{uuid.uuid4()}__",
             "timeout": 10,
         }
     return {}
