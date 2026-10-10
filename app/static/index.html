@@ -61,8 +61,7 @@
       <p class="eyebrow">Computer vision · ONNX Runtime · FastAPI</p>
       <h1>Roast classification and defect detection for coffee beans</h1>
       <p class="lede">
-        Upload a photo of a coffee bean. BeanSight first classifies the roast level, then runs the defect model that
-        matches the result: a 17-class classifier for green (unroasted) beans, or a YOLOv8 detector that finds
+        Upload a coffee bean photo and choose green or roasted analysis (or let BeanSight choose automatically). The app uses a 17-class classifier for green (unroasted) beans, or a YOLOv8 detector that finds
         broken, quaker and scorched beans in roasted coffee.
       </p>
     </section>
@@ -90,6 +89,16 @@
               <span class="mono" id="preview-name">—</span>
               <span class="muted mono" id="preview-size">—</span>
             </div>
+          </div>
+
+          <div class="field">
+            <div class="field-label">Bean type</div>
+            <div class="segmented" role="radiogroup" aria-label="Bean type" id="bean-type">
+              <button type="button" class="seg active" data-value="auto" role="radio" aria-checked="true">Auto-detect</button>
+              <button type="button" class="seg" data-value="green" role="radio" aria-checked="false"><svg aria-hidden="true"><use href="#i-leaf"/></svg>Green</button>
+              <button type="button" class="seg" data-value="roasted" role="radio" aria-checked="false"><svg aria-hidden="true"><use href="#i-flame"/></svg>Roasted</button>
+            </div>
+            <p class="field-hint" id="bean-type-hint">The roast classifier decides which defect model runs. If it gets the bean type wrong, pick it here and analyze again.</p>
           </div>
 
           <ul class="tips">
@@ -140,6 +149,7 @@
             </section>
 
             <div class="route-chip" id="route-chip"></div>
+            <div class="note" id="route-note" hidden></div>
 
             <!-- Stage 2A: green -->
             <section class="stage" id="stage-green" hidden>
@@ -178,14 +188,14 @@
     <section class="section" id="how-it-works">
       <div class="section-head">
         <h2>How it works</h2>
-        <p class="muted">Three ONNX models, run on CPU, chained by the result of the first one.</p>
+        <p class="muted">Three ONNX models run on CPU. Choose the green or roasted defect workflow, or use the roast classifier for automatic routing.</p>
       </div>
 
       <div class="pipeline">
         <article class="pipe-card">
           <div class="pipe-top"><span class="stage-num">1</span><svg class="pipe-icon" aria-hidden="true"><use href="#i-layers"/></svg></div>
           <h3>Roast level</h3>
-          <p>An EfficientNet-B0 classifier labels the bean as <strong>Green, Light, Medium</strong> or <strong>Dark</strong>. The result is shown and also decides which defect model runs next.</p>
+          <p>An EfficientNet-B0 classifier labels the bean as <strong>Green, Light, Medium</strong> or <strong>Dark</strong>. The result is shown and, in auto-detect mode, selects which defect model runs next. You can override it.</p>
           <dl class="specs">
             <div><dt>Model</dt><dd>EfficientNet-B0</dd></div>
             <div><dt>Classes</dt><dd>4</dd></div>

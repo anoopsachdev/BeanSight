@@ -24,7 +24,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, File, HTTPException, Request, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -209,13 +209,23 @@ async def health_check():
 
 @app.post("/api/predict")
 @limiter.limit(settings.RATE_LIMIT)
-async def predict(request: Request, file: UploadFile = File(...)):
+async def predict(
+    request: Request,
+    file: UploadFile = File(...),
+    bean_type: str = Form("auto"),
+):
     """
     Upload a coffee bean image for classification.
 
-    Returns roast level prediction and defect detection results
-    with confidence scores and probability distributions.
+    ``bean_type`` selects which defect model runs:
+      - ``auto`` (default): decided by the roast classifier (Green → green model)
+      - ``green`` / ``roasted``: manual override when the classifier is wrong
+
+    The roast classifier always runs and its result is always returned.
     """
+    bean_type = (bean_type or "auto").lower()
+    if bean_type not in ("auto", "green", "roasted"):
+        raise HTTPException(status_code=400, detail="bean_type must be 'auto', 'green' or 'roasted'")
     # Validate file type
     if file.content_type not in ALLOWED_CONTENT_TYPES:
         raise HTTPException(
@@ -261,8 +271,18 @@ async def predict(request: Request, file: UploadFile = File(...)):
             "probabilities": roast_result["probabilities"],
         }
 
-    # Stage 2: defect analysis, chosen by the Stage 1 result
-    if roast_prediction == "Green" or roasted_yolo_predictor is None:
+    # Stage 2: defect analysis, chosen by the Stage 1 result unless overridden
+    classifier_route = "green" if roast_prediction == "Green" else "roasted"
+    if bean_type == "auto":
+        route = classifier_route
+    else:
+        route = bean_type
+    if route == "roasted" and roasted_yolo_predictor is None:
+        route = "green"
+    result["route_source"] = "classifier" if bean_type == "auto" else "manual"
+    result["classifier_route"] = classifier_route
+
+    if route == "green":
         # Unroasted (green) bean → 17-class defect classifier (single bean)
         result["route"] = "green"
         if defect_predictor is not None:

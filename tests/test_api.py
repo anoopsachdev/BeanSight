@@ -237,6 +237,50 @@ class TestPredictEndpoint:
         assert data["defect"]["confidence"] == 0.8
         assert data["defect"]["probabilities"]["Normal"] == 1.0
 
+    def test_manual_green_override_beats_classifier(self, client, mock_dependencies):
+        # Classifier says Medium (→ roasted), user says it's a green bean
+        data = client.post(
+            "/api/predict",
+            files={"file": ("bean.jpg", create_test_image(), "image/jpeg")},
+            data={"bean_type": "green"},
+        ).json()
+        assert data["roast"]["prediction"] == "Medium"
+        assert data["classifier_route"] == "roasted"
+        assert data["route"] == "green"
+        assert data["route_source"] == "manual"
+        assert data["defect"]["type"] == "green_agricultural"
+        assert "roasted_defect" not in data
+
+    def test_manual_roasted_override(self, client, mock_dependencies):
+        mock_dependencies["roast_predictor"].predict.return_value = {
+            "prediction": "Green",
+            "confidence": 0.9,
+            "probabilities": {"Dark": 0.03, "Green": 0.9, "Light": 0.04, "Medium": 0.03},
+            "inference_time_ms": 12.0,
+        }
+        data = client.post(
+            "/api/predict",
+            files={"file": ("bean.jpg", create_test_image(), "image/jpeg")},
+            data={"bean_type": "roasted"},
+        ).json()
+        assert data["route"] == "roasted"
+        assert data["route_source"] == "manual"
+        assert data["classifier_route"] == "green"
+        assert "roasted_defect" in data
+
+    def test_auto_is_default_and_invalid_rejected(self, client):
+        data = client.post(
+            "/api/predict",
+            files={"file": ("bean.jpg", create_test_image(), "image/jpeg")},
+        ).json()
+        assert data["route_source"] == "classifier"
+        bad = client.post(
+            "/api/predict",
+            files={"file": ("bean.jpg", create_test_image(), "image/jpeg")},
+            data={"bean_type": "espresso"},
+        )
+        assert bad.status_code == 400
+
     def test_green_route_is_reported(self, client, mock_dependencies):
         mock_dependencies["roast_predictor"].predict.return_value = {
             "prediction": "Green",

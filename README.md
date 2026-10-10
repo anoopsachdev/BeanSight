@@ -10,7 +10,7 @@
 [![CI/CD](https://img.shields.io/badge/CI%2FCD-GitHub_Actions_%2B_WIF-2088FF?style=for-the-badge&logo=githubactions&logoColor=white)](https://github.com/anoopsachdev/BeanSight/actions)
 
 <p align="center">
-  <strong>Upload a photo of a coffee bean. BeanSight classifies its roast level, then runs the defect model that matches the result — a 17-class classifier for green (unroasted) beans or a YOLOv8 detector for roasted beans. Three PyTorch models exported to ONNX and served from a single CPU container on Cloud Run.</strong>
+  <strong>Upload a coffee bean photo and select the green or roasted workflow (or use automatic routing). BeanSight runs the matching defect model — a 17-class classifier for green (unroasted) beans or a YOLOv8 detector for roasted beans. Three PyTorch models exported to ONNX and served from a single CPU container on Cloud Run.</strong>
 </p>
 
 [**Open the live app »**](https://coffee-bean-analyzer-876034946934.us-central1.run.app)
@@ -19,12 +19,12 @@
 
 ## 💡 What it does
 
-Green (unroasted) coffee and roasted coffee have different defect taxonomies, so one model can't grade both. BeanSight chains three models and lets the first decide which defect model to run:
+Green (unroasted) coffee and roasted coffee have different defect taxonomies, so one model can't grade both. BeanSight serves three models. The roast classifier can route automatically, or the user can explicitly select the green or roasted defect workflow:
 
 ### Stage 1 — Roast level (router)
 * **Model:** EfficientNet-B0 image classifier, 224 × 224 input.
 * **Classes (4):** `Green`, `Light`, `Medium`, `Dark`.
-* **Output:** predicted roast level with the full probability distribution. `Green` routes to Stage 2A, anything else to Stage 2B.
+* **Output:** predicted roast level with the full probability distribution. In auto mode, `Green` routes to Stage 2A and anything else to Stage 2B. Because image classifiers can be wrong on out-of-distribution photos, the UI provides a manual green/roasted override.
 
 ### Stage 2A — Green bean defect classifier
 * **Model:** EfficientNet-B0 image classifier, trained on single-bean images.
@@ -143,7 +143,7 @@ DevOps & Security
 ## 📡 Production API Reference
 
 ### `POST /api/predict`
-Multipart upload (`file`). The roast classifier always runs; `route` tells you which defect model ran and the response contains either `defect` (green) or `roasted_defect` + a compact `defect` summary (roasted).
+Multipart upload (`file`) with optional `bean_type` (`auto`, `green`, or `roasted`; default `auto`). The roast classifier always runs; `route` tells you which defect model ran and the response contains either `defect` (green) or `roasted_defect` + a compact `defect` summary (roasted).
 
 **Example response — green bean (`route: "green"`):**
 ```json
