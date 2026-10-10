@@ -1,5 +1,5 @@
 # ☕ BeanSight
-### **B2B Quality Assurance Studio for Specialty Coffee Telemetry**
+### **Roast classification and defect detection for coffee beans**
 
 [![Live Demo](https://img.shields.io/badge/Live_Demo-Cloud_Run-4285F4?style=for-the-badge&logo=googlecloud&logoColor=white)](https://coffee-bean-analyzer-876034946934.us-central1.run.app)
 [![Python](https://img.shields.io/badge/Python-3.11-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
@@ -10,28 +10,35 @@
 [![CI/CD](https://img.shields.io/badge/CI%2FCD-GitHub_Actions_%2B_WIF-2088FF?style=for-the-badge&logo=githubactions&logoColor=white)](https://github.com/anoopsachdev/BeanSight/actions)
 
 <p align="center">
-  <strong>An end-to-end edge-optimized deep learning system designed for the specialty coffee industry. BeanSight utilizes a tiered Hybrid ONNX Engine (EfficientNet + YOLOv8) to automate both green coffee micro-grading and post-roast batch uniformity screening in ~150ms.</strong>
+  <strong>Upload a photo of a coffee bean. BeanSight classifies its roast level, then runs the defect model that matches the result — a 17-class classifier for green (unroasted) beans or a YOLOv8 detector for roasted beans. Three PyTorch models exported to ONNX and served from a single CPU container on Cloud Run.</strong>
 </p>
 
-[**Explore Live Web Application »**](https://coffee-bean-analyzer-876034946934.us-central1.run.app)
+[**Open the live app »**](https://coffee-bean-analyzer-876034946934.us-central1.run.app)
 
 ---
 
-## 💡 Domain-Driven Design for Coffee QA
+## 💡 What it does
 
-In the specialty coffee industry, quality control happens in two distinctly different environments. Human evaluators (Q-Graders) manually inspect green coffee for micro-defects, while roasters visually inspect post-production batches for scorches and quakers.
+Green (unroasted) coffee and roasted coffee have different defect taxonomies, so one model can't grade both. BeanSight chains three models and lets the first decide which defect model to run:
 
-BeanSight is engineered to map directly to these real-world workflows with a **Tiered Quality Assurance** pipeline:
+### Stage 1 — Roast level (router)
+* **Model:** EfficientNet-B0 image classifier, 224 × 224 input.
+* **Classes (4):** `Green`, `Light`, `Medium`, `Dark`.
+* **Output:** predicted roast level with the full probability distribution. `Green` routes to Stage 2A, anything else to Stage 2B.
 
-### Tier 1: Inbound Green Coffee (Micro-Grading)
-* **The Goal:** Instantly verify green bean lot quality before committing to expensive production roasts.
-* **The Engine:** An **EfficientNet-B0** classifier trained on a 17-class severity spectrum (e.g., Fungus, Insect Damage, Withered, Dry Cherry).
-* **The Output:** A 0-100 SCAA standard Quality Score and probability distribution.
+### Stage 2A — Green bean defect classifier
+* **Model:** EfficientNet-B0 image classifier, trained on single-bean images.
+* **Classes (17):** Broken, Cut, Dry Cherry, Fade, Floater, Full Black, Full Sour, Fungus Damage, Husk, Immature, Parchment, Partial Black, Partial Sour, Severe Insect Damage, Shell, Slight Insect Damage, Withered.
+* **Output:** predicted defect class, its probability, and the full 17-class distribution. The UI also tags the class with its SCA defect category (Category 1 / Category 2).
+* **Scope:** one bean per photo.
 
-### Tier 2: Post-Roast Production (Batch Screening)
-* **The Goal:** High-throughput batch evaluation for roast consistency and thermal defects.
-* **The Engine:** A **YOLOv8** object detection model localized for roasted coffee.
-* **The Output:** Batch Uniformity %, defect count (Scorched, Quaker, Broken), and an annotated bounding-box localization image.
+### Stage 2B — Roasted bean defect detector
+* **Model:** YOLOv8n object detector, 640 × 640 letterboxed input, NumPy NMS.
+* **Classes (4):** `Normal`, `Broken`, `Quaker`, `Scorched` — one label per detected bean.
+* **Output:** number of beans found, how many look normal, how many are defective and of which type, plus an annotated image with colour-coded boxes.
+* **Scope:** one bean or a handful of beans per photo.
+
+Each analysis is logged to PostgreSQL (roast result + defect result) and the uploaded image is stored in Supabase Storage so the UI can show recent activity and simple aggregates.
 
 ---
 
@@ -70,7 +77,7 @@ Cloud Run automatically checks port bindings to determine container health. Load
 ```mermaid
 flowchart TD
     subgraph Client ["Client Layer"]
-    User["Q-Grader / Roaster"] -->|Upload Image| SPA["Artisanal Vanilla JS UI"]
+    User["Browser"] -->|Upload Image| SPA["Vanilla JS UI"]
     end
 
     subgraph CloudRun ["Google Cloud Run (Serverless Auto-scaling)"]
@@ -128,7 +135,7 @@ Cloud Infrastructure & Database
 DevOps & Security
 ├── CI/CD: GitHub Actions (Automated build & deployment)
 ├── Cloud Security: Workload Identity Federation (Keyless GCP Auth)
-└── Frontend: Vanilla JS/CSS (Artisanal B2B Aesthetic)
+└── Frontend: Vanilla JS / CSS (no build step)
 ```
 
 ---
@@ -136,51 +143,65 @@ DevOps & Security
 ## 📡 Production API Reference
 
 ### `POST /api/predict`
-Uploads a coffee sample for intelligent tiered routing. The response automatically adapts based on whether the sample is unroasted or roasted.
+Multipart upload (`file`). The roast classifier always runs; `route` tells you which defect model ran and the response contains either `defect` (green) or `roasted_defect` + a compact `defect` summary (roasted).
 
-**Example Response (Tier 1: Green Bean):**
+**Example response — green bean (`route: "green"`):**
 ```json
 {
   "roast": {
     "prediction": "Green",
-    "confidence": 0.99
+    "confidence": 0.97,
+    "probabilities": { "Dark": 0.01, "Green": 0.97, "Light": 0.01, "Medium": 0.01 }
   },
+  "route": "green",
   "defect": {
     "type": "green_agricultural",
-    "prediction": "Insect Damage",
+    "prediction": "Slight Insect Damage",
     "confidence": 0.88,
-    "probabilities": { ... }
+    "probabilities": { "...17 classes...": 0.0 }
   },
-  "inference_time_ms": 142.17,
-  "image_url": "https://[...].supabase.co/storage/v1/object/public/coffee-uploads/bean_c50afd.jpg"
+  "inference_time_ms": 92.4,
+  "image_url": "https://[...].supabase.co/storage/v1/object/public/coffee-uploads/predictions/[...].jpg"
 }
 ```
 
-**Example Response (Tier 2: Roasted Batch):**
+**Example response — roasted beans (`route: "roasted"`):**
 ```json
 {
   "roast": {
     "prediction": "Medium",
-    "confidence": 0.95
+    "confidence": 0.95,
+    "probabilities": { "Dark": 0.02, "Green": 0.01, "Light": 0.02, "Medium": 0.95 }
   },
+  "route": "roasted",
   "roasted_defect": {
     "type": "roasted_mechanical",
+    "bean_count": 12,
+    "normal_count": 10,
     "defect_count": 2,
-    "defect_summary": {
-      "Quaker": 2
-    },
-    "detections": [...],
+    "defect_summary": { "Quaker": 2 },
+    "class_summary": { "Normal": 10, "Quaker": 2 },
+    "mean_confidence": 0.71,
+    "detections": [ { "class": "Quaker", "confidence": 0.81, "box": [x1, y1, x2, y2] } ],
     "annotated_image": "data:image/jpeg;base64,/9j/4AAQSkZJRg..."
   },
-  "inference_time_ms": 165.40,
+  "defect": {
+    "type": "roasted_mechanical",
+    "prediction": "Quaker",
+    "confidence": 0.79,
+    "probabilities": { "Broken": 0.0, "Quaker": 0.1667, "Normal": 0.8333, "Scorched": 0.0 }
+  },
+  "inference_time_ms": 118.6,
   "image_url": "https://[...]"
 }
 ```
 
+For roasted samples, `defect.confidence` is the mean detector score of the defect boxes and `defect.probabilities` is the share of detected beans per class.
+
 ### Additional Endpoints
-* `GET /health` — Returns status of ONNX models in memory and API uptime.
-* `GET /api/history?limit=20` — Retrieves recent logged quality evaluations.
-* `GET /api/stats` — Summary metrics (total evaluated, defect distribution).
+* `GET /health` — Load status of the three ONNX models.
+* `GET /api/history?limit=20` — Recent logged analyses (one `roast` row and one `defect` / `roasted_defect` row per image).
+* `GET /api/stats` — Aggregates: images analysed, average latency, roast distribution, defect distribution.
 
 ---
 
