@@ -48,7 +48,10 @@ async def init_storage() -> None:
 
         import asyncio
 
-        client = await asyncio.to_thread(create_client, settings.SUPABASE_URL, settings.SUPABASE_SERVICE_KEY)
+        # A trailing slash makes storage3 build a URL containing `//storage`,
+        # which Supabase rejects with PGRST125 ("Invalid path specified").
+        supabase_url = settings.SUPABASE_URL.strip().rstrip("/")
+        client = await asyncio.to_thread(create_client, supabase_url, settings.SUPABASE_SERVICE_KEY)
         bucket = settings.SUPABASE_BUCKET or "coffee-uploads"
 
         # Ensure bucket exists (network call → thread)
@@ -121,8 +124,9 @@ async def upload_image(
         )
 
         settings = get_settings()
+        supabase_url = settings.SUPABASE_URL.strip().rstrip("/")
         _last_error = None
-        return f"{settings.SUPABASE_URL}/storage/v1/object/public/{_bucket_name}/{storage_path}"
+        return f"{supabase_url}/storage/v1/object/public/{_bucket_name}/{storage_path}"
 
     except Exception as e:
         _last_error = f"{type(e).__name__}: {e}"[:300]
