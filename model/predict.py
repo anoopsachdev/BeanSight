@@ -166,12 +166,22 @@ class YOLOv8ONNXPredictor:
       4. PIL ImageDraw annotation producing Base64 visual output.
     """
 
+    # Box / label colours per class so defects stand out from healthy beans.
+    CLASS_COLORS = {
+        "Normal": "#3cb371",
+        "Broken": "#f59e0b",
+        "Quaker": "#e879f9",
+        "Scorched": "#ef4444",
+    }
+    DEFAULT_COLOR = "#38bdf8"
+
     def __init__(
         self,
         model_path: str | Path,
         class_names: list[str] | None = None,
         conf_threshold: float = 0.25,
         iou_threshold: float = 0.45,
+        normal_class: str = "Normal",
     ):
         if ort is None:
             raise ImportError("onnxruntime is required. pip install onnxruntime")
@@ -180,6 +190,8 @@ class YOLOv8ONNXPredictor:
         self.class_names = class_names or ["defect", "bean"]
         self.conf_threshold = conf_threshold
         self.iou_threshold = iou_threshold
+        # Detections of this class are healthy beans, not defects.
+        self.normal_class = normal_class
 
         if not self.model_path.exists():
             raise FileNotFoundError(f"YOLO ONNX model not found: {self.model_path}")
@@ -253,91 +265,107 @@ class YOLOv8ONNXPredictor:
 
         return keep
 
-    def predict(self, image: Image.Image) -> dict:
-        """
-        Run YOLOv8 object detection on roasted beans.
+    def _postprocess(
+        self,
+        outputs: np.ndarray,
+        orig_size: tuple[int, int],
+        scale: float,
+        pad: tuple[int, int],
+    ) -> list[dict]:
+        """Decode raw YOLOv8 output (1, 4+num_classes, 8400) into NMS-filtered detections."""
+        orig_w, orig_h = orig_size
+        pad_x, pad_y = pad
 
-        Returns structured detections and base64 annotated image.
-        """
-        orig_w, orig_h = image.size
-        input_tensor, scale, (pad_x, pad_y) = self.letterbox(image, self.img_size)
-
-        start = time.perf_counter()
-        outputs = self.session.run(None, {self.input_name: input_tensor})[0]  # Shape: (1, 4+num_classes, 8400)
-        elapsed_ms = (time.perf_counter() - start) * 1000
-
-        # YOLOv8 output transpose: (1, 8400, 4+num_classes)
-        preds = np.transpose(outputs[0], (1, 0))
+        preds = np.transpose(outputs[0], (1, 0))  # (8400, 4+num_classes)
         boxes_xywh = preds[:, :4]
         class_scores = preds[:, 4:]
 
         class_ids = np.argmax(class_scores, axis=1)
         confidences = np.max(class_scores, axis=1)
 
-        # Filter by confidence threshold
         mask = confidences >= self.conf_threshold
         boxes_xywh = boxes_xywh[mask]
         confidences = confidences[mask]
         class_ids = class_ids[mask]
 
         if len(boxes_xywh) == 0:
-            return {
-                "defect_count": 0,
-                "defect_summary": {},
-                "detections": [],
-                "inference_time_ms": round(elapsed_ms, 2),
-                "annotated_image": None,
-            }
+            return []
 
-        # Convert xywh to xyxy on original image coordinates
+        # xywh (letterboxed) -> xyxy (original image coordinates)
         x_c, y_c, w, h = boxes_xywh[:, 0], boxes_xywh[:, 1], boxes_xywh[:, 2], boxes_xywh[:, 3]
-        x1 = (x_c - w / 2 - pad_x) / scale
-        y1 = (y_c - h / 2 - pad_y) / scale
-        x2 = (x_c + w / 2 - pad_x) / scale
-        y2 = (y_c + h / 2 - pad_y) / scale
-
-        # Clip to image boundaries
-        x1 = np.clip(x1, 0, orig_w)
-        y1 = np.clip(y1, 0, orig_h)
-        x2 = np.clip(x2, 0, orig_w)
-        y2 = np.clip(y2, 0, orig_h)
-
+        x1 = np.clip((x_c - w / 2 - pad_x) / scale, 0, orig_w)
+        y1 = np.clip((y_c - h / 2 - pad_y) / scale, 0, orig_h)
+        x2 = np.clip((x_c + w / 2 - pad_x) / scale, 0, orig_w)
+        y2 = np.clip((y_c + h / 2 - pad_y) / scale, 0, orig_h)
         boxes_xyxy = np.column_stack([x1, y1, x2, y2])
 
-        # Apply NMS
         keep_indices = self._nms(boxes_xyxy, confidences, self.iou_threshold)
-        final_boxes = boxes_xyxy[keep_indices]
-        final_confs = confidences[keep_indices]
-        final_classes = class_ids[keep_indices]
 
-        # Structure detections
         detections = []
-        summary = {}
-        for box, conf, cls_id in zip(final_boxes, final_confs, final_classes):
-            cls_name = self.class_names[cls_id] if cls_id < len(self.class_names) else f"defect_{cls_id}"
+        for box, conf, cls_id in zip(boxes_xyxy[keep_indices], confidences[keep_indices], class_ids[keep_indices]):
+            cls_name = self.class_names[cls_id] if cls_id < len(self.class_names) else f"class_{cls_id}"
             detections.append({
                 "class": cls_name,
                 "confidence": round(float(conf), 4),
                 "box": [round(float(coord), 1) for coord in box],
             })
-            summary[cls_name] = summary.get(cls_name, 0) + 1
+        return detections
 
-        # Generate base64 annotated preview
-        annotated_b64 = self.annotate_image(image, detections)
+    def summarize(self, detections: list[dict]) -> dict:
+        """
+        Aggregate detections into bean / defect counts.
+
+        A detection of ``normal_class`` is a healthy bean and is therefore
+        counted in ``bean_count`` and ``class_summary`` but NOT in
+        ``defect_count`` / ``defect_summary``.
+        """
+        class_summary: dict[str, int] = {}
+        defect_summary: dict[str, int] = {}
+        defect_confs: list[float] = []
+        for det in detections:
+            cls_name = det["class"]
+            class_summary[cls_name] = class_summary.get(cls_name, 0) + 1
+            if cls_name != self.normal_class:
+                defect_summary[cls_name] = defect_summary.get(cls_name, 0) + 1
+                defect_confs.append(det["confidence"])
 
         return {
-            "defect_count": len(detections),
-            "defect_summary": summary,
+            "bean_count": len(detections),
+            "normal_count": class_summary.get(self.normal_class, 0),
+            "defect_count": len(defect_confs),
+            "defect_summary": defect_summary,
+            "class_summary": class_summary,
+            "mean_confidence": round(float(np.mean([d["confidence"] for d in detections])), 4) if detections else 0.0,
+            "mean_defect_confidence": round(float(np.mean(defect_confs)), 4) if defect_confs else 0.0,
+        }
+
+    def predict(self, image: Image.Image) -> dict:
+        """
+        Run YOLOv8 object detection on roasted beans.
+
+        Returns structured detections, bean/defect counts and a base64 annotated image.
+        """
+        input_tensor, scale, pad = self.letterbox(image, self.img_size)
+
+        start = time.perf_counter()
+        outputs = self.session.run(None, {self.input_name: input_tensor})[0]  # (1, 4+num_classes, 8400)
+        elapsed_ms = (time.perf_counter() - start) * 1000
+
+        detections = self._postprocess(outputs, image.size, scale, pad)
+        summary = self.summarize(detections)
+
+        return {
+            **summary,
             "detections": detections,
             "inference_time_ms": round(elapsed_ms, 2),
-            "annotated_image": annotated_b64,
+            "annotated_image": self.annotate_image(image, detections),
         }
 
     def annotate_image(self, image: Image.Image, detections: list[dict]) -> str | None:
-        """Draw bounding boxes and labels onto the image, returning base64 JPEG."""
+        """Draw colour-coded bounding boxes and labels onto the image, returning base64 JPEG."""
         import base64
         import io
-        from PIL import ImageDraw
+        from PIL import ImageDraw, ImageFont
 
         if not detections:
             return None
@@ -345,19 +373,38 @@ class YOLOv8ONNXPredictor:
         img_draw = image.copy()
         draw = ImageDraw.Draw(img_draw)
 
-        for det in detections:
+        # Scale stroke and font with image size so labels stay legible.
+        short_side = min(img_draw.size)
+        line_width = max(2, round(short_side / 300))
+        font_size = max(12, round(short_side / 45))
+        try:
+            font = ImageFont.load_default(size=font_size)
+        except TypeError:  # Pillow < 10.1
+            font = ImageFont.load_default()
+
+        # Draw healthy beans first so defect boxes are rendered on top.
+        ordered = sorted(detections, key=lambda d: d["class"] != self.normal_class)
+        for det in ordered:
             box = det["box"]
             cls_name = det["class"]
-            conf = det["confidence"]
+            color = self.CLASS_COLORS.get(cls_name, self.DEFAULT_COLOR)
+            is_defect = cls_name != self.normal_class
 
-            # Draw outer box
-            draw.rectangle(box, outline="#e5a968", width=3)
+            draw.rectangle(box, outline=color, width=line_width if is_defect else max(1, line_width - 1))
 
-            # Label banner
+            if not is_defect:
+                continue  # Only label defects to keep dense images readable.
+
+            label = f"{cls_name} {int(det['confidence'] * 100)}%"
             x1, y1, _, _ = box
-            label_text = f"{cls_name} {int(conf * 100)}%"
-            draw.rectangle([x1, max(0, y1 - 18), x1 + len(label_text) * 8 + 6, max(0, y1)], fill="#e5a968")
-            draw.text((x1 + 3, max(0, y1 - 16)), label_text, fill="#120d09")
+            tx1, ty1, tx2, ty2 = draw.textbbox((0, 0), label, font=font)
+            text_w, text_h = tx2 - tx1, ty2 - ty1
+            pad = max(2, font_size // 4)
+            label_top = y1 - text_h - 2 * pad
+            if label_top < 0:
+                label_top = y1
+            draw.rectangle([x1, label_top, x1 + text_w + 2 * pad, label_top + text_h + 2 * pad], fill=color)
+            draw.text((x1 + pad - tx1, label_top + pad - ty1), label, fill="#111111", font=font)
 
         buffer = io.BytesIO()
         img_draw.save(buffer, format="JPEG", quality=85)
