@@ -99,6 +99,24 @@ const toastContainer= $('toast-container');
 let selectedFile = null;
 let lastGreenProbs = null;
 let showAllGreen = false;
+let beanType = 'auto'; // 'auto' | 'green' | 'roasted'
+
+const beanTypeGroup = $('bean-type');
+const routeNote = $('route-note');
+
+function setBeanType(value) {
+  beanType = value;
+  beanTypeGroup.querySelectorAll('.seg').forEach((b) => {
+    const on = b.dataset.value === value;
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-checked', on ? 'true' : 'false');
+  });
+}
+
+beanTypeGroup.addEventListener('click', (e) => {
+  const btn = e.target.closest('.seg');
+  if (btn) setBeanType(btn.dataset.value);
+});
 
 // ── Helpers ─────────────────────────────────────────────────────────────
 
@@ -217,6 +235,7 @@ analyzeBtn.addEventListener('click', async () => {
 
   const formData = new FormData();
   formData.append('file', selectedFile);
+  formData.append('bean_type', beanType);
 
   try {
     const res = await fetch('/api/predict', { method: 'POST', body: formData });
@@ -253,7 +272,7 @@ function renderResult(data) {
     renderBars(roastBars, ordered, { rowClass: 'mini-bar' });
 
     if (roast.confidence < 0.5) {
-      roastNote.innerHTML = '<svg aria-hidden="true"><use href="#i-alert"/></svg><span>Low confidence: the roast classifier is unsure about this image, so the defect model below may not be the right one. A single bean on a plain background gives the most reliable result.</span>';
+      roastNote.innerHTML = '<svg aria-hidden="true"><use href="#i-alert"/></svg><span>Low confidence: the roast classifier is unsure about this image. A single bean on a plain, light background gives the most reliable result.</span>';
       roastNote.hidden = false;
     } else {
       roastNote.hidden = true;
@@ -265,13 +284,26 @@ function renderResult(data) {
     roastNote.hidden = true;
   }
 
-  // Route chip
+  // Route chip + explanation
+  const manual = data.route_source === 'manual';
+  const prefix = manual ? 'Selected manually' : 'Auto-detected';
   if (route === 'green') {
     routeChip.className = 'route-chip green';
-    routeChip.innerHTML = '<svg aria-hidden="true"><use href="#i-arrow"/></svg> Green bean → 17-class defect classifier';
+    routeChip.innerHTML = `<svg aria-hidden="true"><use href="#i-arrow"/></svg> ${prefix}: green bean → 17-class defect classifier`;
   } else {
     routeChip.className = 'route-chip roasted';
-    routeChip.innerHTML = '<svg aria-hidden="true"><use href="#i-arrow"/></svg> Roasted bean → YOLOv8 defect detector';
+    routeChip.innerHTML = `<svg aria-hidden="true"><use href="#i-arrow"/></svg> ${prefix}: roasted bean → YOLOv8 defect detector`;
+  }
+
+  const classifierRoute = data.classifier_route || (roast?.prediction === 'Green' ? 'green' : 'roasted');
+  if (manual && classifierRoute !== route) {
+    routeNote.innerHTML = `<svg aria-hidden="true"><use href="#i-alert"/></svg><span>The roast classifier predicted <strong>${escapeHtml(roast?.prediction || '—')}</strong> (${classifierRoute} bean), but you selected <strong>${route}</strong>, so the ${route === 'green' ? 'green defect classifier' : 'roasted defect detector'} was used instead.</span>`;
+    routeNote.hidden = false;
+  } else if (!manual && roast && roast.confidence < 0.7) {
+    routeNote.innerHTML = `<svg aria-hidden="true"><use href="#i-alert"/></svg><span>Not the right bean type? The roast classifier was only ${pct(roast.confidence, 0)} sure. Set <strong>Bean type</strong> manually and analyze again.</span>`;
+    routeNote.hidden = false;
+  } else {
+    routeNote.hidden = true;
   }
 
   // Stage 2

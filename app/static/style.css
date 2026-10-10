@@ -155,6 +155,22 @@ button { font: inherit; color: inherit; }
 .preview-meta { display: flex; justify-content: space-between; gap: 12px; font-size: 0.85rem; }
 .preview-meta .mono:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field-label { font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-3); }
+.field-hint { font-size: 0.78rem; color: var(--text-3); }
+.segmented { display: inline-flex; background: var(--surface-3); border: 1px solid var(--border); border-radius: var(--r-md); padding: 3px; gap: 2px; }
+.seg {
+  flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  background: transparent; border: none; border-radius: 7px; padding: 7px 12px;
+  font-size: 0.84rem; font-weight: 500; color: var(--text-2); cursor: pointer;
+  transition: background var(--ease), color var(--ease), box-shadow var(--ease);
+}
+.seg svg { font-size: 15px; }
+.seg:hover { color: var(--text); }
+.seg.active { background: var(--surface); color: var(--text); font-weight: 600; box-shadow: var(--shadow-sm); }
+.seg.active[data-value="green"] { color: var(--green); }
+.seg.active[data-value="roasted"] { color: var(--accent); }
+
 .tips { list-style: none; display: flex; flex-direction: column; gap: 8px; font-size: 0.84rem; color: var(--text-2); }
 .tips li { display: flex; gap: 10px; align-items: flex-start; }
 .tips svg { font-size: 16px; margin-top: 2px; color: var(--accent); }
