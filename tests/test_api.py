@@ -66,11 +66,17 @@ def mock_dependencies():
 
     mock_yolo = MagicMock()
     mock_yolo.predict.return_value = {
+        "bean_count": 3,
+        "normal_count": 1,
         "defect_count": 2,
         "defect_summary": {"Quaker": 1, "Scorched": 1},
+        "class_summary": {"Quaker": 1, "Scorched": 1, "Normal": 1},
+        "mean_confidence": 0.85,
+        "mean_defect_confidence": 0.90,
         "detections": [
             {"class": "Quaker", "confidence": 0.88, "box": [10.0, 10.0, 50.0, 50.0]},
             {"class": "Scorched", "confidence": 0.92, "box": [60.0, 60.0, 100.0, 100.0]},
+            {"class": "Normal", "confidence": 0.75, "box": [120.0, 120.0, 160.0, 160.0]},
         ],
         "inference_time_ms": 15.2,
         "annotated_image": "data:image/jpeg;base64,mockb64",
@@ -188,9 +194,62 @@ class TestPredictEndpoint:
         assert response.status_code == 200
         data = response.json()
         assert data["roast"]["prediction"] == "Dark"
+        assert data["route"] == "roasted"
         assert "roasted_defect" in data
+        assert data["roasted_defect"]["bean_count"] == 3
         assert data["roasted_defect"]["defect_count"] == 2
         assert "Quaker" in data["roasted_defect"]["defect_summary"]
+        assert "Normal" not in data["roasted_defect"]["defect_summary"]
+        # Summary confidence comes from the detector, not a hardcoded constant
+        assert data["defect"]["confidence"] == 0.90
+        assert data["defect"]["prediction"] in ("Quaker", "Scorched")
+
+    def test_predict_roasted_all_normal_is_not_a_defect(self, client, mock_dependencies):
+        mock_dependencies["roast_predictor"].predict.return_value = {
+            "prediction": "Medium",
+            "confidence": 0.9,
+            "probabilities": {"Dark": 0.05, "Green": 0.01, "Light": 0.04, "Medium": 0.9},
+            "inference_time_ms": 12.0,
+        }
+        mock_dependencies["roasted_yolo_predictor"].predict.return_value = {
+            "bean_count": 2,
+            "normal_count": 2,
+            "defect_count": 0,
+            "defect_summary": {},
+            "class_summary": {"Normal": 2},
+            "mean_confidence": 0.8,
+            "mean_defect_confidence": 0.0,
+            "detections": [
+                {"class": "Normal", "confidence": 0.8, "box": [0.0, 0.0, 10.0, 10.0]},
+                {"class": "Normal", "confidence": 0.8, "box": [20.0, 20.0, 30.0, 30.0]},
+            ],
+            "inference_time_ms": 10.0,
+            "annotated_image": None,
+        }
+        response = client.post(
+            "/api/predict",
+            files={"file": ("medium.jpg", create_test_image(), "image/jpeg")},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["roasted_defect"]["defect_count"] == 0
+        assert data["defect"]["prediction"] == "No Defect"
+        assert data["defect"]["confidence"] == 0.8
+        assert data["defect"]["probabilities"]["Normal"] == 1.0
+
+    def test_green_route_is_reported(self, client, mock_dependencies):
+        mock_dependencies["roast_predictor"].predict.return_value = {
+            "prediction": "Green",
+            "confidence": 0.9,
+            "probabilities": {"Dark": 0.03, "Green": 0.9, "Light": 0.04, "Medium": 0.03},
+            "inference_time_ms": 12.0,
+        }
+        data = client.post(
+            "/api/predict",
+            files={"file": ("green.jpg", create_test_image(), "image/jpeg")},
+        ).json()
+        assert data["route"] == "green"
+        assert "roasted_defect" not in data
 
     def test_predict_rejects_non_image(self, client):
         response = client.post(

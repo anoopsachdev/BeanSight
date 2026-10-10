@@ -1,625 +1,506 @@
 /**
- * BeanSight — Industrial Quality Inspection Platform
- * Frontend Telemetry & Decision Controller
+ * BeanSight — frontend controller
+ *
+ * Talks to:
+ *   POST /api/predict  (roast level → green classifier | roasted detector)
+ *   GET  /api/history  (recent logged analyses)
+ *   GET  /api/stats    (aggregates)
+ *   GET  /health       (model load status)
  */
 
-// ── State Management ───────────────────────────────────────────────────
+'use strict';
 
-let activeMode = 'green'; // 'green' | 'roasted'
+// ── Domain knowledge ────────────────────────────────────────────────────
+
+const ROAST_ORDER = ['Green', 'Light', 'Medium', 'Dark'];
+
+// SCA green-coffee defect categories (Category 1 = primary, Category 2 = secondary).
+const SCA_CATEGORY_1 = new Set(['Full Black', 'Full Sour', 'Dry Cherry', 'Fungus Damage', 'Severe Insect Damage']);
+const SCA_CATEGORY_2 = new Set(['Partial Black', 'Partial Sour', 'Parchment', 'Floater', 'Immature', 'Withered', 'Shell', 'Broken', 'Cut', 'Husk', 'Slight Insect Damage']);
+
+const DEFECT_INFO = {
+  'Broken':               'Fractured or chipped bean, usually from hulling or handling.',
+  'Cut':                  'Bean cut by processing machinery, often with a discoloured edge.',
+  'Dry Cherry':           'Bean still enclosed in part or all of the dried cherry husk.',
+  'Fade':                 'Bean has lost its colour, typically from age or poor storage.',
+  'Floater':              'Low-density, pale bean; usually a result of poor drying or storage.',
+  'Full Black':           'Entire bean is black and opaque, usually from over-fermentation.',
+  'Full Sour':            'Entire bean shows sour, fermented discolouration.',
+  'Fungus Damage':        'Mould spots or powdery patches from fungal attack.',
+  'Husk':                 'Fragment of dried cherry skin mixed in with the beans.',
+  'Immature':             'Underdeveloped bean, small with greenish-yellow colour and clinging silverskin.',
+  'Parchment':            'Bean still fully or partly covered by its parchment layer.',
+  'Partial Black':        'Part of the bean (less than half) is black.',
+  'Partial Sour':         'Part of the bean shows sour, fermented discolouration.',
+  'Severe Insect Damage': 'Three or more insect (coffee berry borer) holes.',
+  'Shell':                'Malformed bean with a hollow, shell-like shape.',
+  'Slight Insect Damage': 'One or two small insect holes.',
+  'Withered':             'Shrivelled, wrinkled bean caused by drought or poor nutrition.',
+  // Roasted detector classes
+  'Quaker':               'Underdeveloped bean that stays pale after roasting, usually from unripe cherries.',
+  'Scorched':             'Surface burn marks from excessive heat contact during roasting.',
+  'Normal':               'No visible defect.',
+};
+
+const ROASTED_CHIP_STYLE = { Normal: 'green', Broken: 'amber', Quaker: 'pink', Scorched: 'red' };
+
+// ── DOM ─────────────────────────────────────────────────────────────────
+
+const $ = (id) => document.getElementById(id);
+
+const dropzone      = $('dropzone');
+const fileInput     = $('file-input');
+const preview       = $('preview');
+const previewImg    = $('preview-img');
+const previewName   = $('preview-name');
+const previewSize   = $('preview-size');
+const analyzeBtn    = $('analyze-btn');
+const clearBtn      = $('clear-btn');
+
+const resultsEmpty  = $('results-empty');
+const resultsLoading= $('results-loading');
+const results       = $('results');
+const latencyTag    = $('latency-tag');
+
+const roastValue    = $('roast-value');
+const roastConf     = $('roast-conf');
+const roastBars     = $('roast-bars');
+const roastNote     = $('roast-note');
+const routeChip     = $('route-chip');
+
+const stageGreen    = $('stage-green');
+const greenDefect   = $('green-defect');
+const greenChips    = $('green-chips');
+const greenDesc     = $('green-desc');
+const greenBars     = $('green-bars');
+const greenToggle   = $('green-toggle');
+
+const stageRoasted  = $('stage-roasted');
+const annotatedWrap = $('annotated-wrap');
+const annotatedImg  = $('annotated-img');
+const rBeans        = $('r-beans');
+const rNormal       = $('r-normal');
+const rDefects      = $('r-defects');
+const roastedChips  = $('roasted-chips');
+const roastedDesc   = $('roasted-desc');
+
+const statusDot     = $('status-dot');
+const statusText    = $('status-text');
+const kpiTotal      = $('kpi-total');
+const kpiLatency    = $('kpi-latency');
+const kpiSplit      = $('kpi-split');
+const kpiModels     = $('kpi-models');
+const historyBody   = $('history-body');
+const defectDist    = $('defect-dist');
+const toastContainer= $('toast-container');
+
+// ── State ───────────────────────────────────────────────────────────────
+
 let selectedFile = null;
-let rawHistoryData = [];
-let activeFilter = 'all';
-let statsData = null;
+let lastGreenProbs = null;
+let showAllGreen = false;
 
-// ── DOM Element References ─────────────────────────────────────────────
+// ── Helpers ─────────────────────────────────────────────────────────────
 
-const tabGreen              = document.getElementById('tab-green');
-const tabRoasted            = document.getElementById('tab-roasted');
-const modeContextTag        = document.getElementById('mode-context-tag');
-const dropzoneBox           = document.getElementById('dropzone-box');
-const fileInput             = document.getElementById('file-input');
-const dropzoneHeadline      = document.getElementById('dropzone-headline');
-const samplePreviewContainer= document.getElementById('sample-preview-container');
-const samplePreviewImg      = document.getElementById('sample-preview-img');
-const sampleFilename        = document.getElementById('sample-filename');
-const sampleFilesize        = document.getElementById('sample-filesize');
-const analyzeBtn            = document.getElementById('analyze-btn');
-const clearBtn              = document.getElementById('clear-btn');
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
 
-const resultsPlaceholder    = document.getElementById('results-placeholder');
-const resultsActiveContainer= document.getElementById('results-active-container');
-const inspectionIdBadge     = document.getElementById('inspection-id-badge');
+function pct(p, digits = 1) {
+  return `${(Number(p || 0) * 100).toFixed(digits)}%`;
+}
 
-const statusVerdictBanner   = document.getElementById('status-verdict-banner');
-const verdictIcon           = document.getElementById('verdict-icon');
-const verdictTitle          = document.getElementById('verdict-title');
-const verdictSubtitle       = document.getElementById('verdict-subtitle');
-const verdictConfidence     = document.getElementById('verdict-confidence');
+function formatBytes(bytes) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 
-const evidenceImage         = document.getElementById('evidence-image');
-const evidenceTag           = document.getElementById('evidence-tag');
-
-const detRoastVal           = document.getElementById('det-roast-val');
-const detDefectLabel        = document.getElementById('det-defect-label');
-const detDefectVal          = document.getElementById('det-defect-val');
-const detSeverityVal        = document.getElementById('det-severity-val');
-const detLatencyVal         = document.getElementById('det-latency-val');
-
-const recTitle              = document.getElementById('rec-title');
-const recDesc               = document.getElementById('rec-desc');
-
-const spectrumToggleBtn     = document.getElementById('spectrum-toggle-btn');
-const spectrumArrow         = document.getElementById('spectrum-arrow');
-const spectrumDrawer        = document.getElementById('spectrum-drawer');
-const spectrumBarsList      = document.getElementById('spectrum-bars-list');
-
-const statTotalCount        = document.getElementById('stat-total-count');
-const statAvgLatency        = document.getElementById('stat-avg-latency');
-const statDefectRate        = document.getElementById('stat-defect-rate');
-const analyticsDistBars     = document.getElementById('analytics-distribution-bars');
-
-const auditTableBody        = document.getElementById('audit-table-body');
-const healthDot             = document.getElementById('health-dot');
-const healthStatusText      = document.getElementById('health-status-text');
-const loadingOverlay        = document.getElementById('loading-overlay');
-const toastContainer        = document.getElementById('toast-container');
-
-// ── Toast System ───────────────────────────────────────────────────────
-
-function showToast(message, type = 'info', duration = 3500) {
-  const toast = document.createElement('div');
-  toast.className = `toast ${type}`;
-  toast.textContent = message;
-  toastContainer.appendChild(toast);
-
+function showToast(message, type = 'info', duration = 3200) {
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.textContent = message;
+  toastContainer.appendChild(el);
   setTimeout(() => {
-    toast.style.animation = 'toastIn 0.2s ease reverse forwards';
-    setTimeout(() => toast.remove(), 250);
+    el.classList.add('out');
+    setTimeout(() => el.remove(), 220);
   }, duration);
 }
 
-// ── Mode Switcher ──────────────────────────────────────────────────────
-
-function setInspectionMode(mode) {
-  activeMode = mode;
-  if (mode === 'green') {
-    tabGreen.classList.add('active');
-    tabRoasted.classList.remove('active');
-    modeContextTag.textContent = 'Mode: Green Bean Inbound';
-    dropzoneHeadline.textContent = 'Upload green coffee sample for lot inspection';
-  } else {
-    tabRoasted.classList.add('active');
-    tabGreen.classList.remove('active');
-    modeContextTag.textContent = 'Mode: Roasted Batch QA';
-    dropzoneHeadline.textContent = 'Upload roasted coffee batch for uniformity scan';
-  }
+function renderBars(container, probs, { limit = Infinity, rowClass = 'bar', nameWidth } = {}) {
+  const entries = Object.entries(probs || {}).sort(([, a], [, b]) => b - a).slice(0, limit);
+  container.innerHTML = entries.map(([name, p], i) => `
+    <div class="${rowClass}${i === 0 ? ' top' : ''}">
+      <span class="name" title="${escapeHtml(name)}"${nameWidth ? ` style="width:${nameWidth}"` : ''}>${escapeHtml(name)}</span>
+      <div class="track"><div class="fill" style="width:${Math.max(Number(p) * 100, 1.5)}%"></div></div>
+      <span class="val">${pct(p)}</span>
+    </div>`).join('');
 }
 
-if (tabGreen && tabRoasted) {
-  tabGreen.addEventListener('click', () => setInspectionMode('green'));
-  tabRoasted.addEventListener('click', () => setInspectionMode('roasted'));
+function scaChipFor(defect) {
+  if (SCA_CATEGORY_1.has(defect)) return '<span class="chip red"><span class="dot"></span>SCA Category 1 · primary defect</span>';
+  if (SCA_CATEGORY_2.has(defect)) return '<span class="chip amber"><span class="dot"></span>SCA Category 2 · secondary defect</span>';
+  return '<span class="chip"><span class="dot"></span>Dataset class (not an SCA category)</span>';
 }
 
-// ── File Ingestion & Dropzone ──────────────────────────────────────────
+// ── File handling ───────────────────────────────────────────────────────
 
-function handleLoadedFile(file) {
+function acceptFile(file) {
   if (!file) return;
-
-  const validTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/bmp'];
-  if (!validTypes.includes(file.type)) {
-    showToast('Unsupported file format. Please upload JPG, PNG, or WEBP.', 'error');
+  const okTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/bmp'];
+  if (!okTypes.includes(file.type)) {
+    showToast('Unsupported file type. Please use JPG, PNG or WEBP.', 'error');
     return;
   }
-
   if (file.size > 10 * 1024 * 1024) {
-    showToast('File exceeds 10 MB limit.', 'error');
+    showToast('That file is larger than 10 MB.', 'error');
     return;
   }
 
   selectedFile = file;
-
   const reader = new FileReader();
   reader.onload = (e) => {
-    samplePreviewImg.src = e.target.result;
-    sampleFilename.textContent = file.name;
-    sampleFilesize.textContent = `${(file.size / 1024).toFixed(1)} KB`;
-
-    dropzoneBox.style.display = 'none';
-    samplePreviewContainer.style.display = 'flex';
+    previewImg.src = e.target.result;
+    previewName.textContent = file.name;
+    previewSize.textContent = formatBytes(file.size);
+    dropzone.hidden = true;
+    preview.hidden = false;
     analyzeBtn.disabled = false;
   };
   reader.readAsDataURL(file);
 }
 
-function resetWorkstation() {
+function clearAll() {
   selectedFile = null;
   fileInput.value = '';
-  samplePreviewImg.src = '';
-  samplePreviewContainer.style.display = 'none';
-  dropzoneBox.style.display = 'flex';
+  previewImg.removeAttribute('src');
+  preview.hidden = true;
+  dropzone.hidden = false;
   analyzeBtn.disabled = true;
 
-  resultsActiveContainer.style.display = 'none';
-  resultsPlaceholder.style.display = 'flex';
-  inspectionIdBadge.textContent = 'ID: Standby';
+  results.hidden = true;
+  resultsLoading.hidden = true;
+  resultsEmpty.hidden = false;
+  latencyTag.textContent = '';
 }
 
-if (dropzoneBox) {
-  dropzoneBox.addEventListener('click', () => fileInput.click());
+dropzone.addEventListener('click', () => fileInput.click());
+dropzone.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInput.click(); }
+});
+dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('drag'); });
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag'));
+dropzone.addEventListener('drop', (e) => {
+  e.preventDefault();
+  dropzone.classList.remove('drag');
+  acceptFile(e.dataTransfer.files?.[0]);
+});
+fileInput.addEventListener('change', (e) => acceptFile(e.target.files?.[0]));
+clearBtn.addEventListener('click', clearAll);
 
-  dropzoneBox.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    dropzoneBox.classList.add('drag-over');
-  });
-
-  dropzoneBox.addEventListener('dragleave', () => {
-    dropzoneBox.classList.remove('drag-over');
-  });
-
-  dropzoneBox.addEventListener('drop', (e) => {
-    e.preventDefault();
-    dropzoneBox.classList.remove('drag-over');
-    if (e.dataTransfer.files.length > 0) {
-      handleLoadedFile(e.dataTransfer.files[0]);
-    }
-  });
-}
-
-if (fileInput) {
-  fileInput.addEventListener('change', (e) => {
-    if (e.target.files.length > 0) {
-      handleLoadedFile(e.target.files[0]);
-    }
-  });
-}
-
-if (clearBtn) {
-  clearBtn.addEventListener('click', resetWorkstation);
-}
-
-// ── Demo Fixture Generators ────────────────────────────────────────────
-
-document.querySelectorAll('.btn-demo').forEach(btn => {
-  btn.addEventListener('click', () => {
-    const fixtureType = btn.getAttribute('data-fixture');
-    loadDemoFixture(fixtureType);
-  });
+// Allow pasting an image from the clipboard anywhere on the page.
+document.addEventListener('paste', (e) => {
+  const item = Array.from(e.clipboardData?.items || []).find((i) => i.type.startsWith('image/'));
+  if (item) acceptFile(item.getAsFile());
 });
 
-function loadDemoFixture(type) {
-  const canvas = document.createElement('canvas');
-  canvas.width = 224;
-  canvas.height = 224;
-  const ctx = canvas.getContext('2d');
+// ── Analyze ─────────────────────────────────────────────────────────────
 
-  if (type === 'green_clean') {
-    setInspectionMode('green');
-    ctx.fillStyle = '#1e241c';
-    ctx.fillRect(0, 0, 224, 224);
-    ctx.fillStyle = '#5c7a52';
-    ctx.beginPath();
-    ctx.ellipse(112, 112, 68, 92, -0.2, 0, 2 * Math.PI);
-    ctx.fill();
-    ctx.strokeStyle = '#3e5636';
-    ctx.lineWidth = 3;
-    ctx.stroke();
-  } else if (type === 'green_defect') {
-    setInspectionMode('green');
-    ctx.fillStyle = '#26231c';
-    ctx.fillRect(0, 0, 224, 224);
-    ctx.fillStyle = '#6b7858';
-    ctx.beginPath();
-    ctx.ellipse(112, 112, 70, 90, 0, 0, 2 * Math.PI);
-    ctx.fill();
-    // Parchment / Damage artifact
-    ctx.fillStyle = '#d4c79b';
-    ctx.fillRect(80, 80, 60, 50);
-  } else if (type === 'roasted_dark') {
-    setInspectionMode('roasted');
-    ctx.fillStyle = '#110f0d';
-    ctx.fillRect(0, 0, 224, 224);
-    ctx.fillStyle = '#2c1e18';
-    ctx.beginPath();
-    ctx.ellipse(112, 112, 68, 92, 0.3, 0, 2 * Math.PI);
-    ctx.fill();
-    ctx.strokeStyle = '#140c08';
-    ctx.lineWidth = 4;
-    ctx.beginPath();
-    ctx.moveTo(112, 30);
-    ctx.bezierCurveTo(105, 112, 120, 112, 112, 194);
-    ctx.stroke();
+analyzeBtn.addEventListener('click', async () => {
+  if (!selectedFile) return;
+
+  analyzeBtn.disabled = true;
+  resultsEmpty.hidden = true;
+  results.hidden = true;
+  resultsLoading.hidden = false;
+  latencyTag.textContent = '';
+
+  const formData = new FormData();
+  formData.append('file', selectedFile);
+
+  try {
+    const res = await fetch('/api/predict', { method: 'POST', body: formData });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || `Server error (${res.status})`);
+    }
+    const data = await res.json();
+    renderResult(data);
+    loadStats();
+    loadHistory();
+  } catch (err) {
+    console.error(err);
+    showToast(err.message || 'Analysis failed. Please try again.', 'error');
+    resultsEmpty.hidden = false;
+  } finally {
+    resultsLoading.hidden = true;
+    analyzeBtn.disabled = !selectedFile;
+  }
+});
+
+// ── Rendering ───────────────────────────────────────────────────────────
+
+function renderResult(data) {
+  const roast = data.roast;
+  const route = data.route || (roast?.prediction === 'Green' ? 'green' : 'roasted');
+
+  // Stage 1 — roast level
+  if (roast) {
+    roastValue.textContent = roast.prediction;
+    roastConf.textContent = `${pct(roast.confidence)} confidence`;
+    const ordered = {};
+    ROAST_ORDER.forEach((k) => { if (k in (roast.probabilities || {})) ordered[k] = roast.probabilities[k]; });
+    renderBars(roastBars, ordered, { rowClass: 'mini-bar' });
+
+    if (roast.confidence < 0.5) {
+      roastNote.innerHTML = '<svg aria-hidden="true"><use href="#i-alert"/></svg><span>Low confidence: the roast classifier is unsure about this image, so the defect model below may not be the right one. A single bean on a plain background gives the most reliable result.</span>';
+      roastNote.hidden = false;
+    } else {
+      roastNote.hidden = true;
+    }
   } else {
-    // Roasted defect
-    setInspectionMode('roasted');
-    ctx.fillStyle = '#181412';
-    ctx.fillRect(0, 0, 224, 224);
-    ctx.fillStyle = '#422c22';
-    ctx.beginPath();
-    ctx.ellipse(112, 112, 72, 88, 0, 0, 2 * Math.PI);
-    ctx.fill();
-    // Quaker / Scorch mark
-    ctx.fillStyle = '#c28e46';
-    ctx.beginPath();
-    ctx.ellipse(100, 100, 30, 25, 0.4, 0, 2 * Math.PI);
-    ctx.fill();
+    roastValue.textContent = 'Unavailable';
+    roastConf.textContent = 'Roast model not loaded';
+    roastBars.innerHTML = '';
+    roastNote.hidden = true;
   }
 
-  canvas.toBlob((blob) => {
-    const file = new File([blob], `fixture_${type}.jpg`, { type: 'image/jpeg' });
-    handleLoadedFile(file);
-    showToast(`Loaded test sample: ${type.replace('_', ' ').toUpperCase()}`, 'info');
-  }, 'image/jpeg');
+  // Route chip
+  if (route === 'green') {
+    routeChip.className = 'route-chip green';
+    routeChip.innerHTML = '<svg aria-hidden="true"><use href="#i-arrow"/></svg> Green bean → 17-class defect classifier';
+  } else {
+    routeChip.className = 'route-chip roasted';
+    routeChip.innerHTML = '<svg aria-hidden="true"><use href="#i-arrow"/></svg> Roasted bean → YOLOv8 defect detector';
+  }
+
+  // Stage 2
+  stageGreen.hidden = route !== 'green';
+  stageRoasted.hidden = route !== 'roasted';
+  if (route === 'green') renderGreen(data.defect);
+  else renderRoasted(data.roasted_defect, data.defect);
+
+  latencyTag.textContent = data.inference_time_ms != null ? `${data.inference_time_ms} ms` : '';
+
+  resultsEmpty.hidden = true;
+  results.hidden = false;
 }
 
-// ── Spectrum Drawer Toggle ─────────────────────────────────────────────
+function renderGreen(defect) {
+  if (!defect) {
+    greenDefect.textContent = 'Unavailable';
+    greenChips.innerHTML = '';
+    greenDesc.textContent = 'The green bean defect model is not loaded.';
+    greenBars.innerHTML = '';
+    greenToggle.hidden = true;
+    return;
+  }
+  greenDefect.textContent = defect.prediction;
+  greenChips.innerHTML = `${scaChipFor(defect.prediction)}<span class="chip"><span class="mono">${pct(defect.confidence)}</span> confidence</span>`;
+  greenDesc.textContent = DEFECT_INFO[defect.prediction] || '';
 
-if (spectrumToggleBtn && spectrumDrawer) {
-  spectrumToggleBtn.addEventListener('click', () => {
-    const isClosed = spectrumDrawer.style.display === 'none' || !spectrumDrawer.style.display;
-    spectrumDrawer.style.display = isClosed ? 'block' : 'none';
-    spectrumArrow.textContent = isClosed ? '▲' : '▼';
-  });
+  lastGreenProbs = defect.probabilities || {};
+  showAllGreen = false;
+  renderGreenBars();
+  greenToggle.hidden = Object.keys(lastGreenProbs).length <= 5;
 }
 
-// ── Run Inspection Execution ───────────────────────────────────────────
+function renderGreenBars() {
+  renderBars(greenBars, lastGreenProbs, { limit: showAllGreen ? Infinity : 5 });
+  greenToggle.textContent = showAllGreen ? 'Show top 5 only' : `Show all ${Object.keys(lastGreenProbs).length} classes`;
+}
 
-if (analyzeBtn) {
-  analyzeBtn.addEventListener('click', async () => {
-    if (!selectedFile) {
-      showToast('Please ingest a sample first.', 'error');
+greenToggle.addEventListener('click', () => {
+  showAllGreen = !showAllGreen;
+  renderGreenBars();
+});
+
+function renderRoasted(roasted, defectSummary) {
+  if (!roasted) {
+    annotatedWrap.hidden = true;
+    rBeans.textContent = rNormal.textContent = rDefects.textContent = '—';
+    roastedChips.innerHTML = '';
+    roastedDesc.textContent = 'The roasted bean detector is not loaded.';
+    return;
+  }
+
+  const beans = roasted.bean_count ?? (roasted.detections?.length || 0);
+  const defects = roasted.defect_count ?? 0;
+  const normal = roasted.normal_count ?? Math.max(beans - defects, 0);
+  const classSummary = roasted.class_summary || roasted.defect_summary || {};
+
+  if (roasted.annotated_image) {
+    annotatedImg.src = roasted.annotated_image;
+    annotatedWrap.hidden = false;
+  } else {
+    annotatedWrap.hidden = true;
+  }
+
+  rBeans.textContent = beans;
+  rNormal.textContent = normal;
+  rDefects.textContent = defects;
+
+  roastedChips.innerHTML = Object.entries(classSummary)
+    .sort(([a], [b]) => (a === 'Normal') - (b === 'Normal') || a.localeCompare(b))
+    .map(([cls, n]) => `<span class="chip ${ROASTED_CHIP_STYLE[cls] || 'blue'}"><span class="dot"></span>${escapeHtml(cls)} <span class="mono">×${n}</span></span>`)
+    .join('');
+
+  if (beans === 0) {
+    roastedDesc.textContent = 'No beans were detected. Try a closer, sharper photo of roasted beans on a plain background.';
+  } else if (defects === 0) {
+    roastedDesc.textContent = `All ${beans} detected bean${beans === 1 ? '' : 's'} look normal (mean detector confidence ${pct(roasted.mean_confidence)}).`;
+  } else {
+    const top = defectSummary?.prediction;
+    const info = DEFECT_INFO[top] ? ` ${top}: ${DEFECT_INFO[top]}` : '';
+    roastedDesc.textContent = `${defects} of ${beans} detected bean${beans === 1 ? '' : 's'} flagged as defective, most often "${top}" (mean confidence of defect boxes ${pct(defectSummary?.confidence)}).${info}`;
+  }
+}
+
+// ── Activity: stats, history, health ────────────────────────────────────
+
+async function loadStats() {
+  try {
+    const res = await fetch('/api/stats');
+    if (!res.ok) throw new Error();
+    const s = await res.json();
+
+    const byType = s.predictions_by_type || {};
+    const total = s.total_samples ?? byType.roast ?? Math.round((s.total_predictions || 0) / 2);
+    kpiTotal.textContent = Number(total).toLocaleString();
+    kpiLatency.textContent = s.avg_inference_time_ms ? `${Math.round(s.avg_inference_time_ms)} ms` : '—';
+
+    const rd = s.roast_distribution || {};
+    const green = rd.Green || 0;
+    const roasted = (rd.Light || 0) + (rd.Medium || 0) + (rd.Dark || 0);
+    kpiSplit.textContent = green + roasted > 0 ? `${green} / ${roasted}` : '—';
+
+    const dist = s.defect_distribution && Object.keys(s.defect_distribution).length
+      ? s.defect_distribution
+      : Object.fromEntries(Object.entries(s.top_predicted_classes || {}).filter(([k]) => !ROAST_ORDER.includes(k) && !['Normal', 'No Defect', 'None (Clean)'].includes(k)));
+
+    const entries = Object.entries(dist).sort(([, a], [, b]) => b - a);
+    if (!entries.length) {
+      defectDist.innerHTML = '<p class="muted small">No defects logged yet.</p>';
+    } else {
+      const max = Math.max(...entries.map(([, n]) => n), 1);
+      defectDist.innerHTML = entries.map(([name, n], i) => `
+        <div class="bar${i === 0 ? ' top' : ''}">
+          <span class="name" title="${escapeHtml(name)}">${escapeHtml(name)}</span>
+          <div class="track"><div class="fill" style="width:${Math.max((n / max) * 100, 2)}%"></div></div>
+          <span class="val">${n}</span>
+        </div>`).join('');
+    }
+  } catch {
+    kpiTotal.textContent = kpiLatency.textContent = kpiSplit.textContent = '—';
+    defectDist.innerHTML = '<p class="muted small">Statistics unavailable.</p>';
+  }
+}
+
+/**
+ * Each analysis is stored as two rows (roast + defect) that share filename,
+ * image_url and inference_time_ms. Pair them back up so the table shows one
+ * line per analysed image.
+ */
+function groupHistory(rows) {
+  const groups = [];
+  const byKey = new Map();
+  for (const row of rows) {
+    const key = `${row.image_url || ''}|${row.filename || ''}|${row.inference_time_ms ?? ''}`;
+    let g = byKey.get(key);
+    if (!g || (g.roast && row.analysis_type === 'roast') || (g.defect && row.analysis_type !== 'roast')) {
+      g = { key, timestamp: row.timestamp, filename: row.filename, image_url: row.image_url, roast: null, defect: null };
+      byKey.set(key, g);
+      groups.push(g);
+    }
+    if (row.analysis_type === 'roast') g.roast = row; else g.defect = row;
+    if (row.image_url && !g.image_url) g.image_url = row.image_url;
+  }
+  return groups;
+}
+
+async function loadHistory() {
+  try {
+    const res = await fetch('/api/history?limit=40');
+    if (!res.ok) throw new Error();
+    const data = await res.json();
+    const groups = groupHistory(data.predictions || []).slice(0, 20);
+
+    if (!groups.length) {
+      historyBody.innerHTML = '<tr><td colspan="5" class="table-empty">No analyses logged yet. Upload an image to get started.</td></tr>';
       return;
     }
 
-    loadingOverlay.classList.add('active');
+    historyBody.innerHTML = groups.map((g) => {
+      const roastLabel = g.roast?.predicted_class || '—';
+      const roastConfTxt = g.roast ? pct(g.roast.confidence, 0) : '';
+      const isRoasted = g.defect?.analysis_type === 'roasted_defect' || (g.roast && g.roast.predicted_class !== 'Green');
+      const defectLabel = g.defect?.predicted_class || '—';
+      const defectConf = g.defect ? pct(g.defect.confidence) : '—';
+      const when = g.timestamp ? new Date(g.timestamp).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
+      const thumb = g.image_url
+        ? `<img class="thumb" src="${escapeHtml(g.image_url)}" alt="" loading="lazy" />`
+        : '<div class="thumb-ph"><svg aria-hidden="true"><use href="#i-image"/></svg></div>';
+      const defectClass = defectLabel === 'Normal' || defectLabel === 'No Defect' || defectLabel === 'None (Clean)' ? 'green' : (isRoasted ? 'amber' : 'red');
 
-    const formData = new FormData();
-    formData.append('file', selectedFile);
-
-    try {
-      const response = await fetch('/api/predict', {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.detail || `Server error ${response.status}`);
-      }
-
-      const result = await response.json();
-      renderInspectionResult(result);
-      showToast('Inspection completed successfully.', 'success');
-
-      // Refresh background statistics & audit log
-      fetchHistoricalAnalytics();
-      fetchAuditLogs();
-    } catch (err) {
-      console.error('Inspection failed:', err);
-      showToast(err.message || 'Failed to inspect sample.', 'error');
-    } finally {
-      loadingOverlay.classList.remove('active');
-    }
-  });
-}
-
-// ── Render Inspection Decision & Evidence ──────────────────────────────
-
-function renderInspectionResult(result) {
-  resultsPlaceholder.style.display = 'none';
-  resultsActiveContainer.style.display = 'flex';
-
-  // Generate ID
-  const randomSerial = Math.floor(100000 + Math.random() * 900000);
-  inspectionIdBadge.textContent = `ID: QA-${randomSerial}`;
-
-  const roast = result.roast || { prediction: 'Unknown', confidence: 0 };
-  const defect = result.defect || { prediction: 'None', confidence: 0 };
-  const isGreen = roast.prediction === 'Green';
-
-  // Switch active tab if model indicates discrepancy
-  if (isGreen && activeMode !== 'green') setInspectionMode('green');
-  if (!isGreen && activeMode !== 'roasted') setInspectionMode('roasted');
-
-  // Evidence View
-  if (result.roasted_defect?.annotated_image) {
-    evidenceImage.src = result.roasted_defect.annotated_image;
-    evidenceTag.textContent = 'EVIDENCE: YOLOv8 BOUNDING BOX LOCALIZER';
-  } else if (samplePreviewImg.src) {
-    evidenceImage.src = samplePreviewImg.src;
-    evidenceTag.textContent = isGreen ? 'EVIDENCE: 224px CHROMATIC RGB' : 'EVIDENCE: POST-ROAST VISUAL SCAN';
-  }
-
-  // Detection Grid Values
-  detRoastVal.textContent = `${roast.prediction} (${(roast.confidence * 100).toFixed(1)}%)`;
-  detLatencyVal.textContent = `${result.inference_time_ms || 0} ms`;
-
-  // Decision & Status Evaluation Logic
-  const primarySevereDefects = ['Full Black', 'Full Sour', 'Fungus Damage', 'Severe Insect Damage'];
-  const secondaryDefects = ['Partial Black', 'Partial Sour', 'Broken', 'Cut', 'Shell', 'Floater'];
-
-  if (isGreen) {
-    detDefectLabel.textContent = 'Agricultural Defect';
-    detDefectVal.textContent = `${defect.prediction} (${(defect.confidence * 100).toFixed(1)}%)`;
-
-    if (primarySevereDefects.includes(defect.prediction) && defect.confidence >= 0.5) {
-      statusVerdictBanner.className = 'status-verdict-banner fail';
-      verdictIcon.textContent = '✕';
-      verdictTitle.textContent = 'REJECT — CRITICAL DEFECT DETECTED';
-      verdictSubtitle.textContent = `Primary agricultural defect identified: ${defect.prediction}`;
-      verdictConfidence.textContent = `${(defect.confidence * 100).toFixed(1)}% CONF`;
-
-      detSeverityVal.textContent = 'Critical Risk (Primary Off-Grade)';
-      recTitle.textContent = 'RECOMMENDED OPERATOR ACTION: REJECT LOT';
-      recDesc.textContent = 'Sample fails clean specialty grade requirements. Isolate and reject inbound harvest lot.';
-    } else if (secondaryDefects.includes(defect.prediction) && defect.confidence >= 0.4) {
-      statusVerdictBanner.className = 'status-verdict-banner review';
-      verdictIcon.textContent = '⚠';
-      verdictTitle.textContent = 'REVIEW REQUIRED — SECONDARY DEFECT';
-      verdictSubtitle.textContent = `Secondary defect identified: ${defect.prediction}`;
-      verdictConfidence.textContent = `${(defect.confidence * 100).toFixed(1)}% CONF`;
-
-      detSeverityVal.textContent = 'Moderate Risk (Secondary Defect)';
-      recTitle.textContent = 'RECOMMENDED OPERATOR ACTION: SECONDARY SORT';
-      recDesc.textContent = 'Minor defect anomaly. Run lot through optical sorter or gravity table before roasting.';
-    } else {
-      statusVerdictBanner.className = 'status-verdict-banner pass';
-      verdictIcon.textContent = '✓';
-      verdictTitle.textContent = 'PASS — QUALITY STANDARD MET';
-      verdictSubtitle.textContent = 'Clean green coffee sample with no severe defects';
-      verdictConfidence.textContent = `${(roast.confidence * 100).toFixed(1)}% CONF`;
-
-      detSeverityVal.textContent = 'Low Risk (Clean Sample)';
-      recTitle.textContent = 'RECOMMENDED OPERATOR ACTION: ACCEPT SAMPLE';
-      recDesc.textContent = 'Sample conforms to clean green coffee grade requirements. Approved for production inventory.';
-    }
-  } else {
-    // Roasted Batch Mode
-    detDefectLabel.textContent = 'Batch Defects Found';
-    const defectCount = result.roasted_defect?.defect_count || 0;
-    detDefectVal.textContent = `${defectCount} Defect(s) Flagged`;
-
-    if (defectCount > 3) {
-      statusVerdictBanner.className = 'status-verdict-banner fail';
-      verdictIcon.textContent = '✕';
-      verdictTitle.textContent = 'REJECT — HIGH DEFECT VARIANCE';
-      verdictSubtitle.textContent = `Multiple defects detected in roasted batch (${defectCount} total)`;
-      verdictConfidence.textContent = 'YOLOv8 ACTIVE';
-
-      detSeverityVal.textContent = 'High Defect Variance';
-      recTitle.textContent = 'RECOMMENDED OPERATOR ACTION: QUARANTINE BATCH';
-      recDesc.textContent = 'Excessive scorching or quakers detected. Check burner temperature and drum rotation speed.';
-    } else if (defectCount > 0) {
-      statusVerdictBanner.className = 'status-verdict-banner review';
-      verdictIcon.textContent = '⚠';
-      verdictTitle.textContent = 'REVIEW REQUIRED — MINOR DEFECTS';
-      verdictSubtitle.textContent = `Isolated defects detected (${defectCount} total)`;
-      verdictConfidence.textContent = 'YOLOv8 ACTIVE';
-
-      detSeverityVal.textContent = 'Minor Defect Variance';
-      recTitle.textContent = 'RECOMMENDED OPERATOR ACTION: MANUAL QUALITY CHECK';
-      recDesc.textContent = 'Slight thermal or bean variance. Perform cup tasting verification before packaging.';
-    } else {
-      statusVerdictBanner.className = 'status-verdict-banner pass';
-      verdictIcon.textContent = '✓';
-      verdictTitle.textContent = 'PASS — PRODUCTION ROAST UNIFORM';
-      verdictSubtitle.textContent = `Flawless roast profile: ${roast.prediction}`;
-      verdictConfidence.textContent = `${(roast.confidence * 100).toFixed(1)}% CONF`;
-
-      detSeverityVal.textContent = 'Nominal (Uniform Batch)';
-      recTitle.textContent = 'RECOMMENDED OPERATOR ACTION: APPROVE FOR PACKAGING';
-      recDesc.textContent = 'Roast profile is consistent and defect-free. Commit batch to packaging line.';
-    }
-  }
-
-  // Render Full Probability Spectrum
-  renderProbabilitySpectrum(result);
-}
-
-function renderProbabilitySpectrum(result) {
-  spectrumBarsList.innerHTML = '';
-
-  const probs = (result.defect && result.defect.probabilities)
-    ? result.defect.probabilities
-    : (result.roast && result.roast.probabilities)
-    ? result.roast.probabilities
-    : {};
-
-  const entries = Object.entries(probs).sort(([, a], [, b]) => b - a);
-
-  if (entries.length === 0) {
-    spectrumBarsList.innerHTML = '<div style="color:var(--text-muted);font-size:0.75rem;padding:8px;">No probability distribution available.</div>';
-    return;
-  }
-
-  entries.forEach(([label, prob], index) => {
-    const pct = (prob * 100).toFixed(1);
-    const row = document.createElement('div');
-    row.className = 'spectrum-row';
-    row.innerHTML = `
-      <span class="spectrum-row-label" title="${label}">${label}</span>
-      <div class="spectrum-track">
-        <div class="spectrum-fill" style="width: ${Math.max(prob * 100, 1)}%; ${index === 0 ? 'background:var(--accent);' : 'background:var(--text-muted);'}"></div>
-      </div>
-      <span class="spectrum-row-val">${pct}%</span>
-    `;
-    spectrumBarsList.appendChild(row);
-  });
-}
-
-// ── Historical Operational Analytics (Real Backend Data) ──────────────
-
-async function fetchHistoricalAnalytics() {
-  try {
-    const res = await fetch('/api/stats');
-    if (!res.ok) return;
-    statsData = await res.json();
-
-    // 1. Total count
-    statTotalCount.textContent = (statsData.total_predictions || 0).toLocaleString();
-
-    // 2. Avg latency
-    statAvgLatency.textContent = `${statsData.avg_inference_time_ms || 0} ms`;
-
-    // 3. Defect rate
-    const total = statsData.total_predictions || 0;
-    const defectCounts = statsData.predictions_by_type?.defect || 0;
-    const rate = total > 0 ? ((defectCounts / total) * 100).toFixed(1) : '0.0';
-    statDefectRate.textContent = `${rate}%`;
-
-    // 4. Render real distribution bars
-    renderDistributionBars(statsData.top_predicted_classes || {});
-  } catch (e) {
-    console.warn('Analytics fetch skipped:', e);
+      return `
+        <tr>
+          <td>${thumb}</td>
+          <td><div class="cell-main">${escapeHtml(roastLabel)}</div><div class="cell-sub mono">${roastConfTxt}</div></td>
+          <td><div class="cell-main"><span class="chip ${defectClass}"><span class="dot"></span>${escapeHtml(defectLabel)}</span></div><div class="cell-sub">${isRoasted ? 'Roasted detector' : 'Green classifier'}</div></td>
+          <td class="mono">${defectConf}</td>
+          <td class="muted">${when}</td>
+        </tr>`;
+    }).join('');
+  } catch {
+    historyBody.innerHTML = '<tr><td colspan="5" class="table-empty">History unavailable.</td></tr>';
   }
 }
 
-function renderDistributionBars(topClasses) {
-  const entries = Object.entries(topClasses).sort(([, a], [, b]) => b - a);
-
-  if (entries.length === 0) {
-    analyticsDistBars.innerHTML = '<div style="color:var(--text-muted);font-size:0.8rem;text-align:center;padding:16px;">No prediction records recorded yet. Run evaluations to populate operational distribution.</div>';
-    return;
-  }
-
-  const maxVal = Math.max(...entries.map(([, count]) => count), 1);
-
-  analyticsDistBars.innerHTML = entries.map(([className, count]) => {
-    const pct = Math.round((count / maxVal) * 100);
-    return `
-      <div class="chart-row">
-        <span class="chart-row-label">${className}</span>
-        <div class="chart-track">
-          <div class="chart-fill" style="width: ${pct}%;"></div>
-        </div>
-        <span class="chart-row-stat">${count} sample(s)</span>
-      </div>
-    `;
-  }).join('');
-}
-
-// ── Quality Audit Log Table (Real Supabase Records) ────────────────────
-
-async function fetchAuditLogs() {
-  try {
-    const res = await fetch('/api/history?limit=30');
-    if (!res.ok) return;
-    const data = await res.json();
-    rawHistoryData = data.predictions || [];
-    renderAuditTable();
-  } catch (e) {
-    console.warn('Audit fetch skipped:', e);
-  }
-}
-
-document.querySelectorAll('.audit-filter-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.audit-filter-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    activeFilter = btn.getAttribute('data-filter');
-    renderAuditTable();
-  });
-});
-
-function renderAuditTable() {
-  if (!auditTableBody) return;
-
-  if (!rawHistoryData || rawHistoryData.length === 0) {
-    auditTableBody.innerHTML = `
-      <tr>
-        <td colspan="7" class="audit-empty-state">No evaluations recorded in database yet. Run an inspection to start the audit trail.</td>
-      </tr>
-    `;
-    return;
-  }
-
-  // Filter
-  let filtered = rawHistoryData;
-  if (activeFilter === 'pass') {
-    filtered = rawHistoryData.filter(r => r.confidence < 0.4 || ['Dark', 'Medium', 'Light', 'Green'].includes(r.predicted_class));
-  } else if (activeFilter === 'review') {
-    filtered = rawHistoryData.filter(r => r.confidence >= 0.4 && r.confidence < 0.7);
-  } else if (activeFilter === 'defect') {
-    filtered = rawHistoryData.filter(r => r.confidence >= 0.7 && r.analysis_type === 'defect');
-  }
-
-  if (filtered.length === 0) {
-    auditTableBody.innerHTML = `
-      <tr>
-        <td colspan="7" class="audit-empty-state">No evaluations matching filter "${activeFilter.toUpperCase()}".</td>
-      </tr>
-    `;
-    return;
-  }
-
-  // Group or render individual rows
-  auditTableBody.innerHTML = filtered.map(row => {
-    const isDefect = row.analysis_type === 'defect' && row.confidence >= 0.6;
-    const isReview = row.confidence >= 0.4 && row.confidence < 0.6;
-
-    const decisionBadge = isDefect
-      ? `<span class="badge-tag defect">DEFECT</span>`
-      : isReview
-      ? `<span class="badge-tag review">REVIEW</span>`
-      : `<span class="badge-tag pass">PASS</span>`;
-
-    const modeBadge = row.analysis_type === 'defect'
-      ? `<span class="badge-tag green-mode">GREEN LOT</span>`
-      : `<span class="badge-tag roasted-mode">ROASTED</span>`;
-
-    const timeStr = row.timestamp
-      ? new Date(row.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-      : 'Recent';
-
-    const thumbHtml = row.image_url
-      ? `<img class="audit-thumb-img" src="${row.image_url}" alt="Thumb" loading="lazy" />`
-      : `<div class="audit-thumb-placeholder">📷</div>`;
-
-    return `
-      <tr>
-        <td class="audit-thumb-cell">${thumbHtml}</td>
-        <td style="font-family:var(--font-mono);font-size:0.75rem;color:var(--text-primary);">${row.filename || 'sample.jpg'}</td>
-        <td>${modeBadge}</td>
-        <td style="font-weight:600;color:var(--text-primary);">${row.predicted_class}</td>
-        <td style="font-family:var(--font-mono);">${(row.confidence * 100).toFixed(1)}%</td>
-        <td>${decisionBadge}</td>
-        <td style="font-family:var(--font-mono);font-size:0.72rem;color:var(--text-muted);">${timeStr}</td>
-      </tr>
-    `;
-  }).join('');
-}
-
-// ── Live Health Status Check ───────────────────────────────────────────
-
-async function checkSystemHealth() {
+async function loadHealth() {
   try {
     const res = await fetch('/health');
     if (!res.ok) throw new Error();
     const data = await res.json();
+    const m = data.models || {};
+    const loaded = ['roast', 'defect', 'roasted_yolo'].filter((k) => m[k]).length;
 
-    const allOnline = data.models?.roast && data.models?.defect;
-    const partial = data.models?.roast || data.models?.defect;
-
-    if (allOnline) {
-      healthDot.className = 'status-dot operational';
-      healthStatusText.textContent = 'System Operational';
-    } else if (partial) {
-      healthDot.className = 'status-dot degraded';
-      healthStatusText.textContent = 'Degraded Telemetry';
+    kpiModels.textContent = `${loaded} / 3`;
+    if (loaded === 3) {
+      statusDot.className = 'status-dot ok';
+      statusText.textContent = 'All models loaded';
+    } else if (loaded > 0) {
+      statusDot.className = 'status-dot warn';
+      statusText.textContent = `${loaded} of 3 models loaded`;
     } else {
-      healthDot.className = 'status-dot offline';
-      healthStatusText.textContent = 'Models Offline';
+      statusDot.className = 'status-dot warn';
+      statusText.textContent = 'Models loading…';
     }
+    return loaded === 3;
   } catch {
-    healthDot.className = 'status-dot offline';
-    healthStatusText.textContent = 'Service Unreachable';
+    statusDot.className = 'status-dot bad';
+    statusText.textContent = 'Service unreachable';
+    kpiModels.textContent = '—';
+    return false;
   }
 }
 
-// ── Initialization ─────────────────────────────────────────────────────
+// ── Init ────────────────────────────────────────────────────────────────
 
-document.addEventListener('DOMContentLoaded', () => {
-  checkSystemHealth();
-  fetchHistoricalAnalytics();
-  fetchAuditLogs();
-  setInterval(checkSystemHealth, 30000);
-});
+(async function init() {
+  loadStats();
+  loadHistory();
+  // Models load in the background after a cold start; poll quickly until ready, then slowly.
+  const ready = await loadHealth();
+  if (ready) {
+    setInterval(loadHealth, 60000);
+    return;
+  }
+  let attempts = 0;
+  const timer = setInterval(async () => {
+    attempts += 1;
+    if (await loadHealth() || attempts > 30) {
+      clearInterval(timer);
+      setInterval(loadHealth, 60000);
+    }
+  }, 2000);
+})();

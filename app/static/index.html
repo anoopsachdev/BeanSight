@@ -3,333 +3,294 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="BeanSight — Industrial AI Quality-Control Platform for Specialty Coffee Roasting and Green Coffee Lot Inspection." />
-  <title>BeanSight — Industrial Coffee Quality Inspection Platform</title>
+  <meta name="description" content="BeanSight classifies the roast level of a coffee bean photo, then detects defects with a model matched to green (unroasted) or roasted beans." />
+  <title>BeanSight — Coffee bean roast classification &amp; defect detection</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/static/style.css" />
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>☕</text></svg>" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cellipse cx='16' cy='16' rx='10' ry='14' transform='rotate(-25 16 16)' fill='%234a2c20'/%3E%3Cpath d='M12 5c6 6 2 16 8 22' stroke='%23f7f3ee' stroke-width='2.2' fill='none' stroke-linecap='round'/%3E%3C/svg%3E" />
 </head>
 <body>
 
-  <!-- Loading State Overlay -->
-  <div class="loading-overlay" id="loading-overlay">
-    <div class="loading-dialog">
-      <div class="loading-spinner-ring"></div>
-      <div class="loading-status-title">Executing AI Quality Inspection</div>
-      <div class="loading-status-step" id="loading-step-text">Preprocessing sample &amp; running ONNX inference...</div>
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <symbol id="i-bean" viewBox="0 0 32 32"><ellipse cx="16" cy="16" rx="10" ry="14" transform="rotate(-25 16 16)" fill="currentColor"/><path d="M12 5c6 6 2 16 8 22" stroke="var(--bean-crease, #f7f3ee)" stroke-width="2.2" fill="none" stroke-linecap="round"/></symbol>
+      <symbol id="i-upload" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></symbol>
+      <symbol id="i-leaf" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/></symbol>
+      <symbol id="i-flame" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></symbol>
+      <symbol id="i-layers" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></symbol>
+      <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></symbol>
+      <symbol id="i-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></symbol>
+      <symbol id="i-image" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></symbol>
+      <symbol id="i-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></symbol>
+      <symbol id="i-github" viewBox="0 0 24 24" fill="currentColor"><path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.1.79-.25.79-.56v-2.1c-3.2.7-3.87-1.37-3.87-1.37-.52-1.33-1.28-1.68-1.28-1.68-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.18 1.76 1.18 1.03 1.76 2.69 1.25 3.35.96.1-.75.4-1.25.73-1.54-2.55-.29-5.24-1.28-5.24-5.68 0-1.26.45-2.28 1.18-3.09-.12-.29-.51-1.46.11-3.04 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.78 0c2.2-1.49 3.16-1.18 3.16-1.18.63 1.58.24 2.75.12 3.04.74.81 1.18 1.83 1.18 3.09 0 4.41-2.69 5.38-5.26 5.67.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.51 11.51 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5Z"/></symbol>
+      <symbol id="i-external" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></symbol>
+      <symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></symbol>
+      <symbol id="i-sparkle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/><circle cx="12" cy="12" r="3"/></symbol>
+    </defs>
+  </svg>
+
+  <div class="toast-container" id="toast-container" aria-live="polite"></div>
+
+  <header class="site-header">
+    <div class="container header-inner">
+      <a class="brand" href="/">
+        <svg class="brand-mark" aria-hidden="true"><use href="#i-bean"/></svg>
+        <span class="brand-name">BeanSight</span>
+      </a>
+      <nav class="site-nav" aria-label="Primary">
+        <a href="#analyze">Analyze</a>
+        <a href="#how-it-works">How it works</a>
+        <a href="#activity">Activity</a>
+        <a href="https://github.com/anoopsachdev/BeanSight" target="_blank" rel="noopener noreferrer" class="nav-icon-link" title="Source on GitHub">
+          <svg aria-hidden="true"><use href="#i-github"/></svg><span>GitHub</span>
+        </a>
+      </nav>
+      <div class="status-pill" id="status-pill" title="Live model status from /health">
+        <span class="status-dot" id="status-dot"></span>
+        <span id="status-text">Checking models…</span>
+      </div>
     </div>
-  </div>
+  </header>
 
-  <!-- Toast Notification Container -->
-  <div class="toast-container" id="toast-container"></div>
+  <main class="container">
 
-  <!-- Main Application Shell -->
-  <div class="app-shell">
-
-    <!-- ── 1. Top Industrial Header ──────────────────────────────── -->
-    <header class="app-header">
-      <div class="brand-block">
-        <div class="brand-icon">☕</div>
-        <div class="brand-text">
-          <h1>BeanSight <span class="platform-tag">QA Platform</span></h1>
-          <p class="brand-subtitle">Specialty Coffee Quality Inspection &amp; Roast Consistency Workstation</p>
-        </div>
-      </div>
-
-      <div class="header-telemetry">
-        <div class="system-status-badge" id="system-status-badge" title="Live Inference Service &amp; Storage Health">
-          <span class="status-dot" id="health-dot"></span>
-          <span id="health-status-text">Checking System...</span>
-        </div>
-        <span class="system-env-tag">ONNX CPU • Serverless</span>
-      </div>
-    </header>
-
-    <!-- ── 2. Mode Selector (Segmented Switch) ──────────────────── -->
-    <section class="mode-selector-panel">
-      <div class="mode-segmented-control">
-        <button type="button" class="mode-btn active" id="tab-green">
-          <div class="mode-icon-box">🌱</div>
-          <div>
-            <div class="mode-info-title">
-              <span>GREEN COFFEE</span>
-              <span class="mode-badge">17 Defect Classes</span>
-            </div>
-            <div class="mode-info-desc">Inbound Lot Inspection (Agricultural Defect Diagnostics)</div>
-          </div>
-        </button>
-
-        <button type="button" class="mode-btn" id="tab-roasted">
-          <div class="mode-icon-box">🔥</div>
-          <div>
-            <div class="mode-info-title">
-              <span>ROASTED BATCH</span>
-              <span class="mode-badge">YOLOv8 Detection</span>
-            </div>
-            <div class="mode-info-desc">Post-Roast Production QA (Batch Uniformity &amp; Defect Localizer)</div>
-          </div>
-        </button>
-      </div>
+    <!-- ── Hero ────────────────────────────────────────────────────── -->
+    <section class="hero">
+      <p class="eyebrow">Computer vision · ONNX Runtime · FastAPI</p>
+      <h1>Roast classification and defect detection for coffee beans</h1>
+      <p class="lede">
+        Upload a photo of a coffee bean. BeanSight first classifies the roast level, then runs the defect model that
+        matches the result: a 17-class classifier for green (unroasted) beans, or a YOLOv8 detector that finds
+        broken, quaker and scorched beans in roasted coffee.
+      </p>
     </section>
 
-    <!-- ── 3. Primary Inspection Workstation ────────────────────── -->
-    <main class="workstation-grid">
+    <!-- ── Analyzer ───────────────────────────────────────────────── -->
+    <section class="analyzer" id="analyze">
 
-      <!-- Left Column: Sample Ingestion & Capture -->
-      <section class="qa-card">
-        <div class="qa-card-header">
-          <div class="qa-card-title">
-            <span>📷 Sample Ingestion &amp; Capture</span>
-          </div>
-          <span class="system-env-tag" id="mode-context-tag">Mode: Green Bean Lot</span>
+      <!-- Upload -->
+      <div class="card">
+        <div class="card-head">
+          <h2>Upload a photo</h2>
+          <span class="muted small">JPG · PNG · WEBP · up to 10 MB</span>
         </div>
+        <div class="card-body upload-body">
+          <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="Upload a coffee bean image">
+            <input type="file" id="file-input" accept="image/jpeg,image/png,image/webp,image/bmp" hidden />
+            <div class="dropzone-icon"><svg aria-hidden="true"><use href="#i-upload"/></svg></div>
+            <div class="dropzone-title">Drop an image here or <span class="link">browse</span></div>
+            <div class="dropzone-sub">A clear, well-lit photo on a plain background works best</div>
+          </div>
 
-        <div class="qa-card-body">
-          <div class="upload-container">
-
-            <!-- State 1: Dropzone Box (Empty) -->
-            <div class="dropzone-box" id="dropzone-box">
-              <input type="file" id="file-input" class="file-input" accept="image/jpeg,image/png,image/webp,image/bmp" style="display:none;" />
-              <div class="dropzone-icon-circle">⇪</div>
-              <div class="dropzone-main-text" id="dropzone-headline">Upload sample image for inspection</div>
-              <div class="dropzone-sub-text">Drag &amp; drop file here, or click to browse</div>
-              <div class="dropzone-tags">
-                <span class="dropzone-tag">JPG / PNG / WEBP</span>
-                <span class="dropzone-tag">Max 10 MB</span>
-                <span class="dropzone-tag">224×224 Normalization</span>
-              </div>
+          <div class="preview" id="preview" hidden>
+            <img id="preview-img" alt="Selected coffee bean image" />
+            <div class="preview-meta">
+              <span class="mono" id="preview-name">—</span>
+              <span class="muted mono" id="preview-size">—</span>
             </div>
+          </div>
 
-            <!-- State 2: Sample Ready Preview (Active File) -->
-            <div class="sample-preview-container" id="sample-preview-container">
-              <img id="sample-preview-img" class="sample-preview-img" src="" alt="Loaded Sample Preview" />
-              <div class="sample-meta-row">
-                <span class="sample-filename" id="sample-filename">sample.jpg</span>
-                <span id="sample-filesize">0 KB</span>
-              </div>
-            </div>
+          <ul class="tips">
+            <li><svg aria-hidden="true"><use href="#i-leaf"/></svg><span><strong>Green (unroasted) beans:</strong> photograph a single bean — the defect classifier was trained on individual beans.</span></li>
+            <li><svg aria-hidden="true"><use href="#i-flame"/></svg><span><strong>Roasted beans:</strong> one bean or a handful — the detector draws a box around each bean it finds.</span></li>
+          </ul>
 
-            <!-- Demo Samples Utility Bar -->
-            <div class="demo-samples-section">
-              <span class="demo-sample-label">Demo Fixtures:</span>
-              <div class="demo-button-group">
-                <button type="button" class="btn-demo" data-fixture="green_clean">Green: Clean</button>
-                <button type="button" class="btn-demo" data-fixture="green_defect">Green: Defect (Parchment)</button>
-                <button type="button" class="btn-demo" data-fixture="roasted_dark">Roasted: Dark Profile</button>
-                <button type="button" class="btn-demo" data-fixture="roasted_defect">Roasted: Batch Defect</button>
-              </div>
-            </div>
-
-            <!-- Action Controls -->
-            <div class="workstation-actions">
-              <button type="button" class="btn-primary" id="analyze-btn" disabled>
-                <span>⚡ Run AI Inspection</span>
-              </button>
-              <button type="button" class="btn-secondary" id="clear-btn">
-                <span>✕ Reset</span>
-              </button>
-            </div>
-
+          <div class="actions">
+            <button type="button" class="btn btn-primary" id="analyze-btn" disabled>
+              <svg aria-hidden="true"><use href="#i-sparkle"/></svg><span>Analyze bean</span>
+            </button>
+            <button type="button" class="btn btn-ghost" id="clear-btn">Clear</button>
           </div>
         </div>
-      </section>
+      </div>
 
-      <!-- Right Column: Inspection Results & Decision -->
-      <section class="qa-card">
-        <div class="qa-card-header">
-          <div class="qa-card-title">
-            <span>🔬 Inspection Results &amp; Decision</span>
-          </div>
-          <span class="system-env-tag" id="inspection-id-badge">ID: Standby</span>
+      <!-- Results -->
+      <div class="card">
+        <div class="card-head">
+          <h2>Results</h2>
+          <span class="muted small mono" id="latency-tag"></span>
         </div>
+        <div class="card-body results-body">
 
-        <div class="qa-card-body">
-
-          <!-- Standby Empty State -->
-          <div class="results-placeholder" id="results-placeholder">
-            <div class="results-placeholder-icon">📋</div>
-            <div style="font-weight: 700; color: var(--text-secondary);">No Sample Evaluated</div>
-            <div style="font-size: 0.78rem; max-width: 280px;">Ingest a sample photograph on the left and click "Run AI Inspection" to generate quality telemetry.</div>
+          <div class="empty-state" id="results-empty">
+            <svg aria-hidden="true"><use href="#i-image"/></svg>
+            <p>Results will appear here after you analyze an image.</p>
           </div>
 
-          <!-- Active Result Container -->
-          <div class="results-active-container" id="results-active-container">
+          <div class="loading-state" id="results-loading" hidden>
+            <div class="spinner"></div>
+            <p>Running inference…</p>
+          </div>
 
-            <!-- 1. Operational Status Banner (PASS / REVIEW / REJECT) -->
-            <div class="status-verdict-banner pass" id="status-verdict-banner">
-              <div class="verdict-left">
-                <div class="verdict-icon" id="verdict-icon">✓</div>
+          <div class="results" id="results" hidden>
+
+            <!-- Stage 1 -->
+            <section class="stage">
+              <div class="stage-label"><span class="stage-num">1</span> Roast level</div>
+              <div class="roast-row">
                 <div>
-                  <div class="verdict-title" id="verdict-title">PASS — QUALITY STANDARD MET</div>
-                  <div class="verdict-subtitle" id="verdict-subtitle">Clean sample with no critical defects detected</div>
+                  <div class="roast-value" id="roast-value">—</div>
+                  <div class="muted small" id="roast-conf">—</div>
                 </div>
+                <div class="mini-bars" id="roast-bars"></div>
               </div>
-              <div class="verdict-confidence-badge" id="verdict-confidence">98.5% CONF</div>
-            </div>
+              <div class="note" id="roast-note" hidden></div>
+            </section>
 
-            <!-- 2. Evidence Viewport (Prominent Image with Bounding Boxes if YOLO) -->
-            <div class="evidence-viewport">
-              <img id="evidence-image" class="evidence-img" src="" alt="Evaluated Sample Evidence" />
-              <div class="evidence-tag" id="evidence-tag">EVIDENCE VIEW: INPUT SAMPLE</div>
-            </div>
+            <div class="route-chip" id="route-chip"></div>
 
-            <!-- 3. Key Detection Telemetry Table -->
-            <div class="detection-grid">
-              <div class="detection-cell">
-                <span class="detection-label">Roast Profile</span>
-                <span class="detection-value" id="det-roast-val">—</span>
+            <!-- Stage 2A: green -->
+            <section class="stage" id="stage-green" hidden>
+              <div class="stage-label"><span class="stage-num">2</span> Green bean defect</div>
+              <div class="defect-head">
+                <div class="defect-name" id="green-defect">—</div>
+                <div class="chips" id="green-chips"></div>
               </div>
-              <div class="detection-cell">
-                <span class="detection-label" id="det-defect-label">Detected Classification</span>
-                <span class="detection-value" id="det-defect-val">—</span>
+              <p class="defect-desc" id="green-desc"></p>
+              <div class="bars" id="green-bars"></div>
+              <button type="button" class="btn-link" id="green-toggle">Show all 17 classes</button>
+            </section>
+
+            <!-- Stage 2B: roasted -->
+            <section class="stage" id="stage-roasted" hidden>
+              <div class="stage-label"><span class="stage-num">2</span> Roasted bean defects</div>
+              <figure class="annotated" id="annotated-wrap">
+                <img id="annotated-img" alt="Detections drawn on the uploaded image" />
+                <figcaption class="muted small">Detector output. Defects are labelled; healthy beans are outlined in green.</figcaption>
+              </figure>
+              <div class="stat-row">
+                <div class="stat"><span class="stat-value" id="r-beans">0</span><span class="stat-label">beans detected</span></div>
+                <div class="stat"><span class="stat-value" id="r-normal">0</span><span class="stat-label">look normal</span></div>
+                <div class="stat"><span class="stat-value accent" id="r-defects">0</span><span class="stat-label">defects</span></div>
               </div>
-              <div class="detection-cell">
-                <span class="detection-label">Severity Level</span>
-                <span class="detection-value" id="det-severity-val">—</span>
-              </div>
-              <div class="detection-cell">
-                <span class="detection-label">Inference Latency</span>
-                <span class="detection-value" id="det-latency-val">—</span>
-              </div>
-            </div>
+              <div class="chips" id="roasted-chips"></div>
+              <p class="defect-desc" id="roasted-desc"></p>
+            </section>
 
-            <!-- 4. Actionable Operator Recommendation Box -->
-            <div class="operator-action-box">
-              <div class="operator-action-icon">ℹ</div>
-              <div class="operator-action-text">
-                <strong id="rec-title">RECOMMENDED OPERATOR ACTION: ACCEPT SAMPLE</strong>
-                <p id="rec-desc">Sample conforms to clean green coffee grade requirements. Safe to commit to roasting inventory.</p>
-              </div>
-            </div>
-
-            <!-- 5. Collapsible Probability Spectrum -->
-            <div id="spectrum-drawer-wrapper">
-              <button type="button" class="btn-spectrum-collapsible" id="spectrum-toggle-btn">
-                <span>View Full Class Probability Distribution</span>
-                <span id="spectrum-arrow">▼</span>
-              </button>
-              <div class="spectrum-drawer" id="spectrum-drawer">
-                <div class="spectrum-bars-list" id="spectrum-bars-list"></div>
-              </div>
-            </div>
-
-          </div>
-
-        </div>
-      </section>
-
-    </main>
-
-    <!-- ── 4. Operational Analytics Dashboard ────────────────────── -->
-    <section class="analytics-section">
-      <div class="section-header-clean">
-        <div class="section-title">
-          <span>📈 Operational Quality Analytics</span>
-        </div>
-        <span class="section-meta-tag" id="analytics-source-tag">Live Database Telemetry</span>
-      </div>
-
-      <!-- Live KPIs -->
-      <div class="kpi-grid">
-        <div class="kpi-stat-card">
-          <span class="kpi-stat-title">Total Processed Samples</span>
-          <span class="kpi-stat-value" id="stat-total-count">0</span>
-          <span class="kpi-stat-subtext">Logged in production database</span>
-        </div>
-
-        <div class="kpi-stat-card">
-          <span class="kpi-stat-title">Avg. Inference Latency</span>
-          <span class="kpi-stat-value" id="stat-avg-latency">0 ms</span>
-          <span class="kpi-stat-subtext">CPU execution runtime</span>
-        </div>
-
-        <div class="kpi-stat-card">
-          <span class="kpi-stat-title">Defect Flag Rate</span>
-          <span class="kpi-stat-value" id="stat-defect-rate" style="color: var(--review);">0.0%</span>
-          <span class="kpi-stat-subtext">Evaluations flagged as defect</span>
-        </div>
-
-        <div class="kpi-stat-card">
-          <span class="kpi-stat-title">Inference Engine</span>
-          <span class="kpi-stat-value" style="font-size: 1.25rem; color: var(--accent); margin-top: 10px;">Dual ONNX</span>
-          <span class="kpi-stat-subtext">EfficientNet + YOLOv8 Active</span>
-        </div>
-      </div>
-
-      <!-- Distribution Breakdown Chart -->
-      <div class="analytics-chart-panel">
-        <div class="chart-header">Historical Defect &amp; Profile Distribution</div>
-        <div class="chart-distribution-bars" id="analytics-distribution-bars">
-          <div style="color: var(--text-muted); font-size: 0.8rem; text-align: center; padding: 20px;">
-            Loading live aggregated records from Supabase PostgreSQL...
           </div>
         </div>
       </div>
     </section>
 
-    <!-- ── 5. Quality Audit Log Table ────────────────────────────── -->
-    <section class="audit-section">
-      <div class="section-header-clean">
-        <div class="section-title">
-          <span>📋 Quality Audit Log</span>
-        </div>
-        <span class="section-meta-tag">Recent 30 Evaluations</span>
+    <!-- ── How it works ───────────────────────────────────────────── -->
+    <section class="section" id="how-it-works">
+      <div class="section-head">
+        <h2>How it works</h2>
+        <p class="muted">Three ONNX models, run on CPU, chained by the result of the first one.</p>
       </div>
 
-      <div class="audit-table-card">
-        <div class="audit-table-header-row">
-          <div style="font-size: 0.76rem; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em;">
-            Filter Evaluations
-          </div>
-          <div class="audit-filter-tabs">
-            <button type="button" class="audit-filter-btn active" data-filter="all">ALL</button>
-            <button type="button" class="audit-filter-btn" data-filter="pass">PASS</button>
-            <button type="button" class="audit-filter-btn" data-filter="review">REVIEW</button>
-            <button type="button" class="audit-filter-btn" data-filter="defect">DEFECT</button>
+      <div class="pipeline">
+        <article class="pipe-card">
+          <div class="pipe-top"><span class="stage-num">1</span><svg class="pipe-icon" aria-hidden="true"><use href="#i-layers"/></svg></div>
+          <h3>Roast level</h3>
+          <p>An EfficientNet-B0 classifier labels the bean as <strong>Green, Light, Medium</strong> or <strong>Dark</strong>. The result is shown and also decides which defect model runs next.</p>
+          <dl class="specs">
+            <div><dt>Model</dt><dd>EfficientNet-B0</dd></div>
+            <div><dt>Classes</dt><dd>4</dd></div>
+            <div><dt>Input</dt><dd>224 × 224</dd></div>
+          </dl>
+        </article>
+
+        <div class="pipe-fork" aria-hidden="true">
+          <span class="fork-label">Green</span>
+          <svg><use href="#i-arrow"/></svg>
+          <span class="fork-label">Roasted</span>
+        </div>
+
+        <div class="pipe-branches">
+          <article class="pipe-card green">
+            <div class="pipe-top"><span class="stage-num">2A</span><svg class="pipe-icon" aria-hidden="true"><use href="#i-leaf"/></svg></div>
+            <h3>Green bean defect classifier</h3>
+            <p>For unroasted beans, a second EfficientNet-B0 classifies the bean into one of <strong>17 defect classes</strong> such as Full Black, Fungus Damage, Insect Damage, Parchment or Withered. Works on a single bean per photo.</p>
+            <dl class="specs">
+              <div><dt>Model</dt><dd>EfficientNet-B0</dd></div>
+              <div><dt>Classes</dt><dd>17</dd></div>
+              <div><dt>Scope</dt><dd>Single bean</dd></div>
+            </dl>
+          </article>
+
+          <article class="pipe-card roasted">
+            <div class="pipe-top"><span class="stage-num">2B</span><svg class="pipe-icon" aria-hidden="true"><use href="#i-flame"/></svg></div>
+            <h3>Roasted bean defect detector</h3>
+            <p>For roasted beans, a YOLOv8n detector locates every bean and tags each one as <strong>Normal, Broken, Quaker</strong> or <strong>Scorched</strong>, so it handles a single bean or a handful at once.</p>
+            <dl class="specs">
+              <div><dt>Model</dt><dd>YOLOv8n</dd></div>
+              <div><dt>Classes</dt><dd>4</dd></div>
+              <div><dt>Scope</dt><dd>One or many beans</dd></div>
+            </dl>
+          </article>
+        </div>
+      </div>
+
+      <p class="footnote">
+        Models were trained on public coffee bean datasets and exported to ONNX; accuracy is best on photos that resemble the
+        training data (a single bean on a plain background for classification). Predictions are informational and not a substitute for
+        a certified grader.
+      </p>
+    </section>
+
+    <!-- ── Activity ───────────────────────────────────────────────── -->
+    <section class="section" id="activity">
+      <div class="section-head">
+        <h2>Recent activity</h2>
+        <p class="muted">Every analysis is logged to PostgreSQL; the uploaded image is stored in Supabase Storage.</p>
+      </div>
+
+      <div class="kpis">
+        <div class="kpi"><span class="kpi-label">Images analyzed</span><span class="kpi-value" id="kpi-total">—</span></div>
+        <div class="kpi"><span class="kpi-label">Avg. inference time</span><span class="kpi-value" id="kpi-latency">—</span></div>
+        <div class="kpi"><span class="kpi-label">Green / roasted</span><span class="kpi-value" id="kpi-split">—</span></div>
+        <div class="kpi"><span class="kpi-label">Models loaded</span><span class="kpi-value" id="kpi-models">—</span></div>
+      </div>
+
+      <div class="activity-grid">
+        <div class="card">
+          <div class="card-head"><h2>Recent analyses</h2><span class="muted small">Last 20</span></div>
+          <div class="table-wrap">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Image</th>
+                  <th>Roast</th>
+                  <th>Defect result</th>
+                  <th>Confidence</th>
+                  <th>Time</th>
+                </tr>
+              </thead>
+              <tbody id="history-body">
+                <tr><td colspan="5" class="table-empty">Loading…</td></tr>
+              </tbody>
+            </table>
           </div>
         </div>
 
-        <div class="audit-table-wrap">
-          <table class="audit-table">
-            <thead>
-              <tr>
-                <th class="audit-thumb-cell">Evidence</th>
-                <th>Sample File</th>
-                <th>Mode</th>
-                <th>Detected Class</th>
-                <th>Confidence</th>
-                <th>Decision</th>
-                <th>Timestamp</th>
-              </tr>
-            </thead>
-            <tbody id="audit-table-body">
-              <tr>
-                <td colspan="7" class="audit-empty-state">Loading audit logs...</td>
-              </tr>
-            </tbody>
-          </table>
+        <div class="card">
+          <div class="card-head"><h2>Defects found so far</h2></div>
+          <div class="card-body">
+            <div class="bars" id="defect-dist"><p class="muted small">Loading…</p></div>
+          </div>
         </div>
       </div>
     </section>
 
-    <!-- ── 6. Compact System Specifications ──────────────────────── -->
-    <footer class="system-spec-panel">
-      <div class="spec-left">
-        <span class="spec-item"><strong>BeanSight</strong> v2.0 Production</span>
-        <span class="spec-item">Architecture: <strong>EfficientNet-B0 + YOLOv8 (ONNX CPU)</strong></span>
-        <span class="spec-item">Database: <strong>Supabase PostgreSQL</strong></span>
-      </div>
-      <div class="spec-links">
-        <a href="https://github.com/anoopsachdev/BeanSight" target="_blank" rel="noopener noreferrer" class="spec-link">GitHub Repository ↗</a>
-        <span>•</span>
-        <a href="/health" target="_blank" rel="noopener noreferrer" class="spec-link">Health API ↗</a>
-      </div>
-    </footer>
+  </main>
 
-  </div>
+  <footer class="site-footer">
+    <div class="container footer-inner">
+      <div class="footer-left">
+        <svg class="brand-mark small" aria-hidden="true"><use href="#i-bean"/></svg>
+        <span><strong>BeanSight</strong> · Built by <a href="https://github.com/anoopsachdev" target="_blank" rel="noopener noreferrer">Anoop Singh Sachdev</a></span>
+      </div>
+      <div class="footer-right">
+        <span class="muted">PyTorch → ONNX Runtime · FastAPI · Supabase · Google Cloud Run</span>
+        <a href="https://github.com/anoopsachdev/BeanSight" target="_blank" rel="noopener noreferrer">Source <svg aria-hidden="true"><use href="#i-external"/></svg></a>
+        <a href="/health" target="_blank" rel="noopener noreferrer">Health <svg aria-hidden="true"><use href="#i-external"/></svg></a>
+      </div>
+    </div>
+  </footer>
 
-  <script src="/static/app.js"></script>
+  <script src="/static/app.js" defer></script>
 </body>
 </html>
