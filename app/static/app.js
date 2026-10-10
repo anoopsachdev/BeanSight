@@ -358,11 +358,25 @@ function renderRoasted(roasted, defectSummary) {
 
 // ── Activity: stats, history, health ────────────────────────────────────
 
+function setActivityNotice(available) {
+  const notice = $('activity-notice');
+  if (!notice) return;
+  notice.hidden = available;
+}
+
 async function loadStats() {
   try {
     const res = await fetch('/api/stats');
     if (!res.ok) throw new Error();
     const s = await res.json();
+
+    if (s.database_available === false) {
+      setActivityNotice(false);
+      kpiTotal.textContent = kpiLatency.textContent = kpiSplit.textContent = '—';
+      defectDist.innerHTML = '<p class="muted small">Not available while the activity log is offline.</p>';
+      return;
+    }
+    setActivityNotice(true);
 
     const byType = s.predictions_by_type || {};
     const total = s.total_samples ?? byType.roast ?? Math.round((s.total_predictions || 0) / 2);
@@ -423,6 +437,10 @@ async function loadHistory() {
     const res = await fetch('/api/history?limit=40');
     if (!res.ok) throw new Error();
     const data = await res.json();
+    if (data.database_available === false) {
+      historyBody.innerHTML = '<tr><td colspan="5" class="table-empty">The activity log is temporarily offline. Analysis still works — results just are not being recorded right now.</td></tr>';
+      return;
+    }
     const groups = groupHistory(data.predictions || []).slice(0, 20);
 
     if (!groups.length) {
@@ -465,9 +483,15 @@ async function loadHealth() {
     const loaded = ['roast', 'defect', 'roasted_yolo'].filter((k) => m[k]).length;
 
     kpiModels.textContent = `${loaded} / 3`;
-    if (loaded === 3) {
+    const dbDown = data.database && data.database.connected === false;
+    if (loaded === 3 && dbDown) {
+      statusDot.className = 'status-dot warn';
+      statusText.textContent = 'Models ready · activity log offline';
+      statusText.parentElement.title = data.database.error ? `Database: ${data.database.error}` : 'Database unreachable';
+    } else if (loaded === 3) {
       statusDot.className = 'status-dot ok';
       statusText.textContent = 'All models loaded';
+      statusText.parentElement.title = 'Live model status from /health';
     } else if (loaded > 0) {
       statusDot.className = 'status-dot warn';
       statusText.textContent = `${loaded} of 3 models loaded`;

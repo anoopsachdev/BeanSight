@@ -7,8 +7,12 @@ Manages the predictions log table with full lifecycle management.
 
 from __future__ import annotations
 
+import asyncio
+import time
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
+from urllib.parse import urlsplit
 
 from sqlalchemy import (
     JSON,
@@ -20,6 +24,7 @@ from sqlalchemy import (
     select,
     func,
 )
+from sqlalchemy.exc import InterfaceError, OperationalError
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
@@ -57,6 +62,18 @@ class Prediction(Base):
 _engine = None
 _session_factory = None
 
+# Connection health bookkeeping so a failed startup (e.g. a paused Supabase
+# project) can be retried lazily instead of leaving the app broken until the
+# next deploy.
+_last_error: str | None = None
+_last_attempt_monotonic: float = 0.0
+_RETRY_INTERVAL_SECONDS = 30.0
+_init_lock: asyncio.Lock | None = None
+
+
+class DatabaseUnavailable(RuntimeError):
+    """Raised when the database cannot be reached."""
+
 
 from sqlalchemy.pool import NullPool
 
@@ -66,60 +83,128 @@ def _get_connect_args(url: str) -> dict:
         # Supabase PgBouncer pooler (port 6543) requires disabling statement caches
         return {
             "statement_cache_size": 0,
+            "timeout": 10,
         }
     return {}
 
 
-async def init_db() -> None:
-    """Initialize the database engine and create tables."""
-    global _engine, _session_factory
-
-    settings = get_settings()
-    url = settings.DATABASE_URL
-
-    # Supabase gives standard postgresql:// urls, but SQLAlchemy async requires postgresql+asyncpg://
+def _normalize_url(url: str) -> str:
+    """Supabase gives postgresql:// URLs; SQLAlchemy async needs postgresql+asyncpg://."""
     if url.startswith("postgres://"):
-        url = url.replace("postgres://", "postgresql+asyncpg://", 1)
-    elif url.startswith("postgresql://") and not url.startswith("postgresql+asyncpg://"):
-        url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+        return url.replace("postgres://", "postgresql+asyncpg://", 1)
+    if url.startswith("postgresql://") and not url.startswith("postgresql+asyncpg://"):
+        return url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    return url
 
-    is_postgres = "asyncpg" in url
-    engine_kwargs = {
-        "echo": False,
-        "connect_args": _get_connect_args(url),
+
+def _describe_error(exc: BaseException) -> str:
+    text = f"{type(exc).__name__}: {exc}".strip().splitlines()[0]
+    # /health is public: never leak the connection string, credentials or host.
+    settings = get_settings()
+    secrets = [settings.DATABASE_URL, settings.SUPABASE_SERVICE_KEY]
+    try:
+        parsed = urlsplit(_normalize_url(settings.DATABASE_URL))
+        secrets += [parsed.password, parsed.username, parsed.hostname]
+    except ValueError:
+        pass
+    for secret in secrets:
+        if secret and secret in text:
+            text = text.replace(secret, "[redacted]")
+    return text[:300]
+
+
+async def init_db() -> bool:
+    """
+    Initialize the database engine and create tables.
+
+    Returns True on success. Never raises: failures are recorded in
+    ``_last_error`` and retried lazily by ``ensure_db``.
+    """
+    global _engine, _session_factory, _last_error, _last_attempt_monotonic, _init_lock
+
+    if _init_lock is None:
+        _init_lock = asyncio.Lock()
+
+    async with _init_lock:
+        if _session_factory is not None:
+            return True
+
+        _last_attempt_monotonic = time.monotonic()
+        settings = get_settings()
+        url = _normalize_url(settings.DATABASE_URL)
+        is_postgres = "asyncpg" in url
+
+        engine_kwargs = {"echo": False, "connect_args": _get_connect_args(url)}
+        if is_postgres:
+            engine_kwargs["poolclass"] = NullPool
+        else:
+            engine_kwargs["pool_pre_ping"] = True
+            # Make sure the parent directory exists for file-based SQLite.
+            db_path = url.split("///")[-1]
+            if db_path and db_path != ":memory:":
+                Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+
+        engine = None
+        try:
+            engine = create_async_engine(url, **engine_kwargs)
+            async with engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+        except Exception as exc:  # noqa: BLE001 — any driver/network error
+            _last_error = _describe_error(exc)
+            print(f"  ⚠️  Database unavailable: {_last_error}")
+            if engine is not None:
+                await engine.dispose()
+            return False
+
+        _engine = engine
+        _session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+        _last_error = None
+        print("  ✅ Database initialized")
+        return True
+
+
+async def ensure_db() -> bool:
+    """Return True if the DB is usable, retrying initialisation at most every 30s."""
+    if _session_factory is not None:
+        return True
+    if time.monotonic() - _last_attempt_monotonic < _RETRY_INTERVAL_SECONDS:
+        return False
+    return await init_db()
+
+
+def db_status() -> dict:
+    """Snapshot of connection state for /health."""
+    return {
+        "connected": _session_factory is not None,
+        "error": _last_error,
     }
-    if is_postgres:
-        engine_kwargs["poolclass"] = NullPool
-    else:
-        engine_kwargs["pool_pre_ping"] = True
-
-    _engine = create_async_engine(url, **engine_kwargs)
-    _session_factory = async_sessionmaker(
-        _engine,
-        class_=AsyncSession,
-        expire_on_commit=False,
-    )
-
-    # Create tables (safe for existing tables)
-    async with _engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    print("  ✅ Database initialized")
 
 
 async def close_db() -> None:
     """Dispose of the database engine."""
-    global _engine
+    global _engine, _session_factory
     if _engine:
         await _engine.dispose()
+        _engine = None
+        _session_factory = None
         print("  ✅ Database connection closed")
 
 
 def get_session() -> AsyncSession:
     """Get a new async session."""
     if _session_factory is None:
-        raise RuntimeError("Database not initialized. Call init_db() first.")
+        raise DatabaseUnavailable(_last_error or "Database not initialized")
     return _session_factory()
+
+
+def _mark_connection_error(exc: BaseException) -> None:
+    """Drop the engine after a connection-level failure so the next call re-initialises."""
+    global _engine, _session_factory, _last_error, _last_attempt_monotonic
+    _last_error = _describe_error(exc)
+    _last_attempt_monotonic = time.monotonic()
+    _engine = None
+    _session_factory = None
+    print(f"  ⚠️  Database connection lost: {_last_error}")
 
 
 # ── CRUD Operations ─────────────────────────────────────────────────────
@@ -140,6 +225,9 @@ async def log_prediction(
     Returns:
         The prediction ID.
     """
+    if not await ensure_db():
+        raise DatabaseUnavailable(_last_error or "Database not initialized")
+
     prediction = Prediction(
         filename=filename,
         analysis_type=analysis_type,
@@ -150,14 +238,29 @@ async def log_prediction(
         image_url=image_url,
     )
 
-    async with get_session() as session:
-        session.add(prediction)
-        await session.commit()
-        return prediction.id
+    try:
+        async with get_session() as session:
+            session.add(prediction)
+            await session.commit()
+            return prediction.id
+    except (OperationalError, InterfaceError, OSError) as exc:
+        _mark_connection_error(exc)
+        raise DatabaseUnavailable(_last_error) from exc
 
 
 async def get_history(limit: int = 20, offset: int = 0) -> list[dict]:
     """Get recent predictions, newest first."""
+    if not await ensure_db():
+        raise DatabaseUnavailable(_last_error or "Database not initialized")
+
+    try:
+        return await _get_history(limit, offset)
+    except (OperationalError, InterfaceError, OSError) as exc:
+        _mark_connection_error(exc)
+        raise DatabaseUnavailable(_last_error) from exc
+
+
+async def _get_history(limit: int, offset: int) -> list[dict]:
     async with get_session() as session:
         result = await session.execute(
             select(Prediction)
@@ -185,6 +288,17 @@ async def get_history(limit: int = 20, offset: int = 0) -> list[dict]:
 
 async def get_stats() -> dict:
     """Get aggregate prediction statistics."""
+    if not await ensure_db():
+        raise DatabaseUnavailable(_last_error or "Database not initialized")
+
+    try:
+        return await _get_stats()
+    except (OperationalError, InterfaceError, OSError) as exc:
+        _mark_connection_error(exc)
+        raise DatabaseUnavailable(_last_error) from exc
+
+
+async def _get_stats() -> dict:
     async with get_session() as session:
         # Total predictions
         total_result = await session.execute(

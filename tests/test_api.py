@@ -323,6 +323,16 @@ class TestHistoryEndpoint:
         assert response.status_code == 200
 
 
+    def test_history_degrades_gracefully_when_db_down(self, client):
+        from app.database import DatabaseUnavailable
+        with patch("app.main.get_history", new_callable=AsyncMock, side_effect=DatabaseUnavailable("paused")):
+            response = client.get("/api/history")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["predictions"] == []
+        assert data["database_available"] is False
+
+
 # ── Stats Endpoint ──────────────────────────────────────────────────────
 
 
@@ -336,6 +346,39 @@ class TestStatsEndpoint:
         assert "avg_inference_time_ms" in data
         assert "predictions_by_type" in data
         assert "top_predicted_classes" in data
+        assert data["database_available"] is True
+
+    def test_stats_degrades_gracefully_when_db_down(self, client):
+        from app.database import DatabaseUnavailable
+        with patch("app.main.get_stats", new_callable=AsyncMock, side_effect=DatabaseUnavailable("paused")):
+            response = client.get("/api/stats")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["database_available"] is False
+        assert data["total_predictions"] == 0
+
+
+# ── Health reports dependencies ─────────────────────────────────────────
+
+
+class TestHealthDependencies:
+    def test_health_includes_database_and_storage(self, client):
+        data = client.get("/health").json()
+        assert "database" in data and "connected" in data["database"]
+        assert "storage" in data and "configured" in data["storage"]
+
+    def test_error_text_redacts_connection_details(self, monkeypatch):
+        import app.database as db
+
+        class FakeSettings:
+            DATABASE_URL = "postgresql://user_abc:s3cret@db.example.supabase.co:6543/postgres"
+            SUPABASE_SERVICE_KEY = "svc-key"
+
+        monkeypatch.setattr(db, "get_settings", lambda: FakeSettings())
+        text = db._describe_error(RuntimeError('auth failed for "user_abc" with s3cret at db.example.supabase.co'))
+        assert "s3cret" not in text
+        assert "user_abc" not in text
+        assert "db.example.supabase.co" not in text
 
 
 # ── Frontend ────────────────────────────────────────────────────────────

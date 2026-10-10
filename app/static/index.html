@@ -238,6 +238,11 @@
         <p class="muted">Every analysis is logged to PostgreSQL; the uploaded image is stored in Supabase Storage.</p>
       </div>
 
+      <div class="notice" id="activity-notice" hidden>
+        <svg aria-hidden="true"><use href="#i-alert"/></svg>
+        <span>The activity log is temporarily offline, so new analyses are not being recorded. Image analysis itself is unaffected.</span>
+      </div>
+
       <div class="kpis">
         <div class="kpi"><span class="kpi-label">Images analyzed</span><span class="kpi-value" id="kpi-total">—</span></div>
         <div class="kpi"><span class="kpi-label">Avg. inference time</span><span class="kpi-value" id="kpi-latency">—</span></div>
